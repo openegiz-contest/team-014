@@ -4,9 +4,11 @@
 
 ## Team
 
-| Participant | GitHub |
-|---|---|
-|  |  |
+<!-- GitHub usernames of the Participants. Other personal data are not required: the repository becomes public after the Freeze (Rules, section 15). -->
+
+| GitHub |
+|---|
+|  |
 
 ## Mine
 
@@ -45,4 +47,4 @@ Confidential data of organizations and personal data are prohibited.
 
 ---
 
-Platform: OpenEgiz v1.0.3.
+Platform: OpenEgiz v1.0.4.

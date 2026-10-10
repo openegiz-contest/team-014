@@ -27,7 +27,7 @@ Replace these commands with the commands of your Submission. The Submission must
 | `SUBMISSION.md` | Description of the Submission: **required** |
 | `presentation.pdf` | Presentation: **required**, in the repository root |
 | `examples/mine/` | The Example Mine: shows how a digital mine is built on OpenEgiz. It is not a basis for the Submission |
-| `OPENEGIZ.md`, `OPENEGIZ.ru.md` | Documentation of the OpenEgiz platform v1.0.3 |
+| `OPENEGIZ.md`, `OPENEGIZ.ru.md` | Documentation of the OpenEgiz platform v1.0.4 |
 
 The Submission is the `main` branch at the moment of the Freeze; other branches are not evaluated.
 
