@@ -9,10 +9,48 @@ export const COLORS = {
   alarm: "#ef4b4b",
   info: "#4aa3df",
   smoke: "#9a6b3c",
-  smokeDense: "#4a2a17",
+  smokeLight: "#c8913f",
+  smokeMid: "#e8702a",
+  smokeDense: "#ff3d1a",
+  route: "#4aa3df",
   white: "#e6eaf0",
   grey: "#8592a3",
 };
+
+/** Smoke density per airway cell (0..1, from the twin) to visibility, as in the
+ * simulator: vis = 3 / (0.6 s + 0.06), capped at 50 m. */
+export function smokeVisibility(s: number) {
+  return Math.min(50, 3 / (0.6 * Math.max(0, s) + 0.06));
+}
+
+const SMOKE_STOPS: [number, string][] = [
+  [0.03, COLORS.air],
+  [0.25, COLORS.smokeLight],
+  [0.6, COLORS.smokeMid],
+  [1, COLORS.smokeDense],
+];
+
+function hexRgb(h: string): [number, number, number] {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Airway colour by smoke density: steel blue (clear) to amber, orange and red-orange (visibility under 5 m). */
+export function smokeColor(s: number) {
+  if (s <= SMOKE_STOPS[0][0]) return COLORS.air;
+  for (let i = 1; i < SMOKE_STOPS.length; i++) {
+    const [s1, c1] = SMOKE_STOPS[i];
+    if (s <= s1 || i === SMOKE_STOPS.length - 1) {
+      const [s0, c0] = SMOKE_STOPS[i - 1];
+      const k = Math.min(1, Math.max(0, (s - s0) / (s1 - s0)));
+      const a = hexRgb(c0);
+      const b = hexRgb(c1);
+      const m = a.map((v, j) => Math.round(v + (b[j] - v) * k));
+      return `#${m.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+    }
+  }
+  return COLORS.smokeDense;
+}
 
 export const TONE_COLOR: Record<Tone, string> = {
   neutral: COLORS.grey,
@@ -68,12 +106,22 @@ const LABELS: Record<string, [string, Tone]> = {
   acting: ["выполняет", "info"],
   awaiting_dispatcher: ["ждёт диспетчера", "warn"],
   completed: ["отработала", "ok"],
+  disabled: ["выведена из работы", "alarm"],
   evacuation: ["эвакуация", "alarm"],
   fan_trip: ["остановка ГВУ", "alarm"],
   occupied: ["заняты", "ok"],
   pending: ["в очереди", "neutral"],
   issued: ["отправлена", "info"],
   done: ["выполнено", "ok"],
+  drilling: ["бурение", "neutral"],
+  bolting: ["крепление", "neutral"],
+  isolated: ["перекрыт", "info"],
+  auto: ["автоматически", "neutral"],
+  manual: ["вручную", "neutral"],
+  stop: ["стоп", "info"],
+  run: ["пуск", "neutral"],
+  none: ["нет", "neutral"],
+  forecast: ["прогноз", "info"],
 };
 
 export function stateLabel(state: unknown): [string, Tone] {

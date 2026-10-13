@@ -40,7 +40,13 @@ There are no gradients, glass effects or glow. Depth comes from 1 px borders and
   --alarm: #ef4b4b;       /* alarm, fire, fault */
   --alarm-bg: #3a1618;
   --info: #4aa3df;        /* evacuating, in progress */
-  --smoke: #9a6b3c;       /* smoke-logged airway */
+  --smoke: #9a6b3c;       /* smoke bar in panels */
+  /* smoke scale by twin smoke fraction: 0.25 / 0.6 / 1.0 ≈ visibility 15 / 7 / under 5 m */
+  --smoke-light: #c8913f;
+  --smoke-mid: #e8702a;
+  --smoke-dense: #ff3d1a;
+  --route: #4aa3df;       /* evacuation route of a crew */
+  --reverse: #ffcf66;     /* airflow arrows while the main fan is reversed */
   --focus: #ffd166;       /* focus ring */
 }
 ```

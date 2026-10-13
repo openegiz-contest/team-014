@@ -85,6 +85,31 @@ export function placeOf(things: Record<string, Thing>, name: string): XYZ | null
   return null;
 }
 
+export type FireTruth = { type?: string; airway: string; s: number; hrr_mw: number; extinct: boolean; t?: number };
+
+export type FireSpot = { aw: Airway; s: number; xyz: XYZ; horizon: string; hrr: number };
+
+export function horizonOfZ(z: number) {
+  return HORIZONS.reduce((b, h) => (Math.abs(h.z - z) < Math.abs(b.z - z) ? h : b)).id;
+}
+
+/** The burning spot from the scenario twin (`control.fire_truth`), if a fire is active. */
+export function fireSpot(things: Record<string, Thing>, aws: Airway[]): FireSpot | null {
+  const raw = prop<string>(things, "control", "fire_truth");
+  if (typeof raw !== "string") return null;
+  let f: FireTruth | null = null;
+  try {
+    f = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!f || f.extinct || !(f.hrr_mw > 0.05)) return null;
+  const aw = aws.find((a) => a.edge === f!.airway);
+  if (!aw) return null;
+  const xyz = pointOn(aw, f.s);
+  return { aw, s: f.s, xyz, horizon: aw.horizon ?? horizonOfZ(xyz[2]), hrr: f.hrr_mw };
+}
+
 export function kindOf(things: Record<string, Thing>, name: string) {
   return String(things[name]?.attributes?.kind ?? "");
 }
