@@ -296,7 +296,12 @@ def analyse(mirror, position_id=None, last_est=None, q_ref=None):
         r = simulate(m, opt, position)
         r["title"] = TITLES[opt]
         options.append(r)
+    # on a tie keep the plan's ventilation mode, or the current one: no switch without a gain
+    current = mirror.prop("gvu", "mode", default="normal")
+    preferred = position.get("ventilation", current) if position else current
     ranked = sorted([o for o in options if o["option"] != "nothing"], key=lambda o: o["harm"])
+    if ranked[1]["harm"] - ranked[0]["harm"] <= 1 and ranked[1]["option"] == preferred:
+        ranked.reverse()
     best = ranked[0]
     other = ranked[1]
     base = options[0]
@@ -322,4 +327,4 @@ def analyse(mirror, position_id=None, last_est=None, q_ref=None):
         else:
             audit = f"{position['title']}: решение плана подтверждается прогнозом."
     return dict(state="emergency", estimate=est, options=options, recommendation=rec, audit=audit,
-                position=position["id"] if position else None, held=held)
+                position=position["id"] if position else None, held=held, best=best["option"])

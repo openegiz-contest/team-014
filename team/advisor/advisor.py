@@ -96,7 +96,7 @@ class Advisor:
                           "audit": {"value": ""}, "computed_at": {"value": sim_t, "unit": "с"}})
             return
         options = [{k: v for k, v in o.items()} for o in result["options"]]
-        best = min((o for o in options if o["option"] != "nothing"), key=lambda o: o["harm"])
+        best = next(o for o in options if o["option"] == result["best"])
         est = result["estimate"]
         self.publish({
             "state": {"value": "forecast"},
