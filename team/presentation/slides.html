@@ -35,6 +35,10 @@
   .g-50 { grid-template-columns: 1fr 1fr; }
   .shot { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); align-self: start; }
   .shot img { display: block; width: 100%; height: auto; }
+  ul.dense { gap: 12px; }
+  ul.dense li { font-size: 18px; line-height: 1.4; }
+  ul.dense li::before { top: 10px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
   .cap { font-size: 15px; color: var(--text-3); margin-top: 8px; line-height: 1.4; }
   .foot { position: absolute; left: 56px; right: 56px; bottom: 20px; display: flex; justify-content: space-between; font: 500 13px "IBM Plex Mono", monospace; color: var(--text-3); }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: auto; }
@@ -90,9 +94,9 @@
   </div>
   <div class="stats">
     <div class="stat"><b>100</b><span>двойников в Ditto</span></div>
-    <div class="stat"><b>7</b><span>аварийных сценариев</span></div>
-    <div class="stat"><b>11</b><span>отказов защиты</span></div>
-    <div class="stat"><b>≈ 2 с</b><span>прогноз на 30 минут, 3 варианта</span></div>
+    <div class="stat"><b>9</b><span>аварийных сценариев</span></div>
+    <div class="stat"><b>13</b><span>отказов защиты</span></div>
+    <div class="stat"><b>4</b><span>варианта в прогнозе советчика на 30 минут</span></div>
   </div>
   <div class="foot"><span>Цифровая шахта «Болашак»</span><span>2</span></div>
 </section>
@@ -133,12 +137,12 @@
   <h2>Пульт диспетчера: 3D и мнемосхема горизонта</h2>
   <div class="grid g-50">
     <div>
-      <div class="shot"><img src="shots/31-lhd-3d-560.png" alt="3D-модель шахты, горизонт −560, очаг 15,6 МВт"></div>
-      <p class="cap">3D-модель трёх горизонтов: дым окрашивает выработки, на модели видны очаг, бригады, убежища и техника.</p>
+      <div class="shot"><img src="shots/31-lhd-3d-560.png" alt="3D-модель шахты, горизонт −560: дым от горящей ПДМ, бригады идут к убежищам"></div>
+      <p class="cap">3D-модель трёх горизонтов: дым окрашивает выработки, на модели видны очаг, бригады с маршрутами выхода, убежища и техника.</p>
     </div>
     <div>
-      <div class="shot"><img src="shots/34-lhd-scheme.png" alt="Мнемосхема горизонта −560 с дымом и CO на датчиках"></div>
-      <p class="cap">Мнемосхема −560: направление и скорость воздуха, CO на датчиках, задымлённые выработки, люди в убежище.</p>
+      <div class="shot"><img src="shots/34-lhd-scheme.png" alt="Мнемосхема горизонта −560 с дымом, CO на датчиках и маршрутом к убежищу"></div>
+      <p class="cap">Мнемосхема −560: направление и скорость воздуха, CO на датчиках, задымлённая выработка, маршрут бригады к убежищу.</p>
     </div>
   </div>
   <div class="foot"><span>http://localhost:8095</span><span>4</span></div>
@@ -148,11 +152,12 @@
   <div class="kicker">Модуль 1 · противоаварийная защита</div>
   <h2>ПАЗ отрабатывает позицию ПЛА по событиям Ditto</h2>
   <div class="grid g-35-65">
-    <ul>
-      <li>Датчик или бортовая система техники переходит в «аварию». ПАЗ подбирает <strong>позицию плана ликвидации аварий</strong>.</li>
+    <ul class="dense">
+      <li>Датчик или бортовая система техники переходит в «аварию» — ПАЗ подбирает <strong>позицию плана ликвидации аварий</strong>.</li>
       <li>Команды уходят исполнительным органам как <code>desiredProperties</code>; ПАЗ ждёт фактического состояния и отмечает <strong>отказы</strong>.</li>
-      <li>Пожар ЦПП −480: обесточить ЦПП, реверс обоих вентиляторов, эвакуация. Позиция отработана <strong>за 130–140 с</strong>.</li>
-      <li>В ручном режиме команды ждут диспетчера или уходят через 5 модельных минут.</li>
+      <li>Пожар ЦПП −480: обесточить ЦПП, реверс вентиляторов, эвакуация. Позиция отработана <strong>за 250 с</strong>, включая выход вентилятора на реверс.</li>
+      <li>Место пожара не определено — общая позиция 0, <strong>советчик уточняет её</strong>; в ручном режиме уточнение подтверждает диспетчер.</li>
+      <li>Режимы: автоматический, ручной (команды ждут диспетчера до 5 мин) и «выведена из работы».</li>
     </ul>
     <div>
       <div class="shot"><img src="shots/12-paz.png" alt="Вкладка ПАЗ: позиция 6 отработана"></div>
@@ -165,17 +170,37 @@
   <div class="kicker">Модуль 2 · советчик диспетчера</div>
   <h2>Прогноз на 30 минут и проверка плана</h2>
   <div class="grid g-35-65">
-    <ul>
-      <li>Место пожара ищется <strong>только по двойникам</strong>: по сработавшим датчикам и направлениям воздуха до тревоги.</li>
-      <li>Модель шахты восстанавливается из двойников и прогоняется вперёд для вариантов <strong>«без действий», «норма + ПЛА», «реверс + ПЛА»</strong>.</li>
+    <ul class="dense">
+      <li>Место пожара — <strong>только по двойникам</strong>: сработавшие датчики и направления воздуха до тревоги.</li>
+      <li>Модель восстанавливается из двойников и прогоняется вперёд: «норма + ПЛА» и «реверс + ПЛА» — <strong>для выбора</strong>, «без ПАЗ» и «без новых действий» — <strong>для сравнения</strong>.</li>
+      <li>Мощность очага — по CO на узле ниже по струе с поправкой на перенос и действия защиты; на пульте видно, как получена оценка.</li>
       <li>Ранжирование: пострадавшие, люди под угрозой, доза FED, человеко-минуты в дыму.</li>
       <li>Аудит: совпадает ли решение позиции ПЛА о проветривании с лучшим вариантом.</li>
     </ul>
-    <div>
-      <div class="shot"><img src="shots/13-advisor.png" alt="Вкладка «Советчик» при пожаре ЦПП"></div>
+    <div class="pair">
+      <div class="shot"><img src="shots/13-advisor.png" alt="Вкладка «Советчик» при пожаре ЦПП: место и мощность очага, как получена оценка, рекомендация"></div>
+      <div class="shot"><img src="shots/14-advisor-chart.png" alt="График прогноза: люди в безопасности по четырём вариантам и проверка позиции ПЛА"></div>
     </div>
   </div>
   <div class="foot"><span>team/advisor</span><span>6</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">What-if · стенд сравнения на пульте</div>
+  <h2>Что было бы при ручном режиме или без ПАЗ</h2>
+  <div class="grid g-35-65">
+    <ul>
+      <li>Вкладка <strong>«Сценарии»</strong>: выбрать аварию и отказы защиты, нажать <strong>«Сравнить режимы защиты»</strong>.</li>
+      <li>Сценарий прогоняется на копии модели в режимах «авто», «ручной», «без ПАЗ», а если позиция требует реверса — ещё «без реверса». Живая шахта не меняется.</li>
+      <li>По каждому режиму: обнаружение, первые команды, позиция ПЛА, люди, доза FED, человеко-минуты в дыму, мощность очага.</li>
+      <li>График показывает ход аварии по режимам за 30 минут.</li>
+    </ul>
+    <div class="pair">
+      <div class="shot"><img src="shots/15-study-runs.png" alt="Стенд сравнения для пожара ЦПП: карточка автоматического режима"></div>
+      <div class="shot"><img src="shots/17-study-chart.png" alt="График «Ход аварии по режимам»: люди в безопасности при авто, ручном режиме, без ПАЗ и без реверса"></div>
+    </div>
+  </div>
+  <div class="foot"><span>Вкладка «Сценарии»</span><span>7</span></div>
 </section>
 
 <section class="slide">
@@ -184,14 +209,15 @@
   <table>
     <thead><tr><th style="width:30%">Сценарий</th><th>С автоматикой ПАЗ</th><th>Без неё</th></tr></thead>
     <tbody>
-      <tr><td>Пожар ПДМ −560</td><td class="ok">29 из 29 в безопасности, доза FED 0</td><td class="warn">ручной режим: FED 0,23, 36 чел.·мин в дыму; без действий FED 0,60</td></tr>
-      <tr><td>Пожар ЦПП −480</td><td class="ok">реверс по позиции 6: 0 чел.·мин в дыму</td><td class="bad">нормальный режим: 178 чел.·мин в дыму, 24 из 29 за 30 мин</td></tr>
-      <tr><td>Пожар конвейера −640</td><td class="ok">1,8 МВт через 30 мин</td><td class="bad">дренчер и дверь отказали: 7,0 МВт</td></tr>
-      <tr><td>Пожар склада ГСМ −640</td><td class="ok">очаг потушен</td><td class="bad">дверь и отсечной клапан отказали: 4,1 МВт</td></tr>
+      <tr><td>Пожар ПДМ −560</td><td class="ok">29 из 29 в безопасности, доза FED 0</td><td class="warn">ручной режим: FED 0,08, 39 чел.·мин в дыму; без ПАЗ FED 0,59</td></tr>
+      <tr><td>Пожар ЦПП −480</td><td class="ok">реверс по позиции 6: 29 из 29, 0 чел.·мин в дыму</td><td class="bad">та же ПАЗ без реверса: 90 чел.·мин в дыму, 20 из 29 за 30 мин</td></tr>
+      <tr><td>Пожар конвейера −640</td><td class="ok">очаг не выше 1,8 МВт</td><td class="bad">дренчер и дверь отказали: 7,0 МВт; без ПАЗ 14,0 МВт</td></tr>
+      <tr><td>Склад ГСМ −640, отказ датчика склада</td><td class="ok">советчик уточняет позицию 0 → 1, клапан закрыт, 0,1 МВт к 30 мин</td><td class="bad">без ПАЗ: 15,2 МВт через 30 мин</td></tr>
+      <tr><td>Пожар ПДМ, отказ бортовой системы и датчика</td><td class="warn">обнаружение через 285 с: 6 человек в дыму, FED 0,52</td><td class="bad">то же при любом режиме: решает скорость обнаружения</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:24px">Сценарии запускаются с пульта или через двойник <code>control</code>, отказы защиты комбинируются с любым пожаром, «Сброс в норму» возвращает шахту в исходное состояние.</p>
-  <div class="foot"><span>Цифровая шахта «Болашак»</span><span>7</span></div>
+  <p style="margin-top:24px">Числа — со стенда сравнения: запрос <code>study</code> в двойник <code>control</code> прогоняет сценарий в режимах «авто», «ручной», «без ПАЗ» (если позиция ПЛА включает реверс — ещё «авто без реверса») на копии модели; результат в двойнике <code>advisor</code>, одинаковый при каждом запросе.</p>
+  <div class="foot"><span>Цифровая шахта «Болашак»</span><span>8</span></div>
 </section>
 
 <section class="slide">
@@ -200,7 +226,7 @@
   <div class="grid" style="grid-template-columns: 1fr">
     <div class="shot" style="width: 848px; justify-self: center"><img src="shots/20-grafana.png" alt="Дашборд Grafana: люди, ПАЗ, CO, видимость, мощность пожара, ГВУ"></div>
   </div>
-  <div class="foot"><span>http://localhost:3000/d/bolashak-mine</span><span>8</span></div>
+  <div class="foot"><span>http://localhost:3000/d/bolashak-mine</span><span>9</span></div>
 </section>
 
 <section class="slide">
@@ -208,9 +234,9 @@
   <h2>Одна команда поднимает платформу и шахту</h2>
   <div class="grid" style="grid-template-columns: 5fr 4fr 2fr">
     <div>
-      <div class="cmd"><span>$</span> sudo apt-get install -y make<br><span>$</span> make up<br><span>$</span> make mine-check</div>
+      <div class="cmd"><span>$</span> command -v make &gt;/dev/null || sudo apt-get install -y make<br><span>$</span> make up<br><span>$</span> make mine-check</div>
       <ul style="margin-top:24px">
-        <li><code>make mine-check</code> проверяет двойники и иерархию, ход модели, данные в InfluxDB, дашборд, пульт и прокси, затем прогоняет сценарий и сбрасывает шахту в норму.</li>
+        <li><code>make mine-check</code> проверяет двойники и иерархию, ход модели, данные в InfluxDB, дашборд, пульт и прокси, затем прогоняет сценарий, проверяет варианты советчика и его сброс в норму и запускает стенд сравнения на показательной аварии.</li>
         <li>Пульт работает на телефоне: та же модель, вкладки, клавиатура и фокус.</li>
       </ul>
     </div>
@@ -225,7 +251,7 @@
     </div>
     <div class="shot"><img src="shots/16-mobile.png" alt="Пульт диспетчера на телефоне"></div>
   </div>
-  <div class="foot"><span>github.com/openegiz-contest/team-014</span><span>9</span></div>
+  <div class="foot"><span>github.com/openegiz-contest/team-014</span><span>10</span></div>
 </section>
 
 </body>
