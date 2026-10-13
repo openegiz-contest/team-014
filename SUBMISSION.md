@@ -149,12 +149,12 @@ bolashak:mine
 P=$(grep ^DITTO_PASSWORD= deploy/compose/.env | cut -d= -f2)
 curl -s -u "ditto:$P" -X PUT -H 'Content-Type: application/json' \
   http://localhost:8080/api/2/things/bolashak:control/features/study/desiredProperties \
-  -d '{"scenario": "conveyor", "faults": ["door_stuck:fd-640-conv", "valve_stuck:dv-640-conv"], "seq": 1}'
+  -d '{"scenario": "conveyor", "faults": ["door_stuck:fd-640-conv", "valve_stuck:dv-640-conv"], "seq": '"$(date +%s)"'}'
 sleep 10
 curl -s -u "ditto:$P" http://localhost:8080/api/2/things/bolashak:advisor/features/study/properties
 ```
 
-`seq` в каждом новом запросе должен отличаться от предыдущего (удобно увеличивать на 1; текущий виден в `study.seq` ответа). В ответе `summary` — итог текстом, `runs` — все прогоны с журналом ПАЗ и рядом по минутам. Ключи сценариев: `bev_lhd`, `bev_truck`, `charger`, `conveyor`, `depot`, `substation`, `bev_lhd_blind`, `depot_blind`; ключи отказов — в атрибуте `faults` двойника `bolashak:control`. Числа не зависят от того, что сейчас происходит в живой шахте, и совпадают при каждом запросе. `make mine-check` выполняет такой запрос для показательного сценария и проверяет, что люди в нём действительно в опасности.
+`seq` в каждом новом запросе должен отличаться от предыдущего, поэтому в примере это текущее время в секундах; номер последнего выполненного запроса виден в `study.seq` ответа. В ответе `summary` — итог текстом, `runs` — все прогоны с журналом ПАЗ и рядом по минутам. Ключи сценариев: `bev_lhd`, `bev_truck`, `charger`, `conveyor`, `depot`, `substation`, `bev_lhd_blind`, `depot_blind`; ключи отказов — в атрибуте `faults` двойника `bolashak:control`. Числа не зависят от того, что сейчас происходит в живой шахте, и совпадают при каждом запросе. `make mine-check` выполняет такой запрос для показательного сценария и проверяет, что люди в нём действительно в опасности.
 
 Живая шахта даёт те же картины в реальном времени: при каждом пожаре советчик считает четыре варианта от текущего состояния двойников.
 
