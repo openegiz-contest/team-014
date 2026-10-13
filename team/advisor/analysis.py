@@ -3,20 +3,29 @@
 1. Locate the fire: candidate fire loads (plant, depot, chargers, vehicles
    whose detection fired) are scored against the alarmed gas stations,
    following the airflow directions the airway twins report.
-2. Estimate its heat release from the CO at the first downstream station.
+2. Estimate its heat release and age: from the CO mass flow at downstream
+   stations, corrected for the time the smoke took to get there, or from
+   the time since a vehicle's on-board detection fired.
 3. Rebuild a mine model from the twins (actuator positions, fans, people,
-   smoke already in the airways) and run it ahead for each option.
-4. Rank options by harm to people, then compare with the plan position.
+   smoke already in the airways) and run it ahead for each option. Two of
+   them are baselines: no new actions from now on, and no protection at
+   all (the mine from just before the alarm, with the fire but without
+   anything the protection has done since).
+4. Rank the ventilation options by harm to people, then compare with the
+   plan position and propose a more specific one when the fire is located.
 """
 
 import math
 
-from minecore import layout, pla
+from minecore import ditto, layout, pla
 from minecore.fire import Fire
-from minecore.model import CO_DENSITY, MineModel
+from minecore.model import CO_BACKGROUND, CO_DENSITY, MineModel
 
 HORIZON_S = 1800.0
 SAMPLE_S = 120.0
+ACT_LAG_S = 30.0
+KEY_POINTS = {"C480": "клетевой ствол −480", "C560": "клетевой ствол −560", "C640": "клетевой ствол −640",
+              "J560": "убежище −560", "J640": "убежище −640"}
 
 
 # -- fire location ------------------------------------------------------------------
@@ -84,6 +93,8 @@ def candidates(mirror):
 
 
 def locate(mirror, q=None):
+    """Best candidate fire for the current alarms, or None. Only the place:
+    the heat release is estimated separately (estimate())."""
     alarmed = {s for s in layout.SENSORS if mirror.prop(s, "state") == "alarm"}
     faulty = {s for s in layout.SENSORS if mirror.prop(s, "state") == "fault"}
     q = q or flow_dirs(mirror)
@@ -99,35 +110,184 @@ def locate(mirror, q=None):
         if not hits and not c.get("alarm"):
             continue
         nearest = min(hits, key=lambda s: reach[s]) if hits else None
-        cand = dict(c, score=round(score, 2), sensors=sorted(hits), nearest=nearest,
-                    distance=round(reach[nearest]) if nearest else 0)
+        cand = dict(c, score=round(score, 2), sensors=sorted(hits, key=lambda s: reach[s]), nearest=nearest,
+                    distance=round(reach[nearest]) if nearest else 0, reach=reach)
         if best is None or cand["score"] > best["score"]:
             best = cand
     if best is None:
         return None
-    best["hrr_mw"] = estimate_hrr(mirror, best)
     total = max(1, len(alarmed))
     best["confidence"] = round(min(1.0, (len(best["sensors"]) / total) * (1.0 if best.get("alarm") or best["sensors"] else 0.5)), 2)
     return best
 
 
-def estimate_hrr(mirror, cand):
-    cfg = layout.FIRE_TYPES[cand["type"]]
-    s = cand.get("nearest")
-    if not s:
-        return round(cfg["peak_mw"] * 0.25, 1)
-    co = float(mirror.prop(s, "co", default=0) or 0)
-    vel = abs(float(mirror.prop(s, "velocity", default=0) or 0))
-    area = layout.EDGES[layout.SENSORS[s]["edge"]]["area"]
-    m_co = max(0.0, co - 1.0) * 1e-6 * vel * area * CO_DENSITY
-    hrr = m_co / cfg["co_yield"] * layout.HEAT_OF_COMBUSTION / 1e6
-    return round(min(hrr, cfg["peak_mw"] * 1.3), 1)
+def _curve(ftype, t):
+    return Fire(ftype).curve(max(0.0, t))
+
+
+def _age_for(ftype, hrr):
+    """Age at which a free-burning fire of this type reaches `hrr` (growth phase)."""
+    c = layout.FIRE_TYPES[ftype]
+    return c["t_peak_s"] * math.sqrt(min(1.0, max(0.0, hrr) / c["peak_mw"]))
+
+
+def _vehicle_hrr(ftype, age):
+    """Heat release of a vehicle fire `age` s after ignition with the on-board
+    system discharged at detection (knock-down, then re-ignition)."""
+    f = Fire(ftype)
+    while f.t < age:
+        f.step(min(5.0, age - f.t), {"onboard": f.t >= layout.ONBOARD_DETECT_S})
+    return f.hrr_mw
+
+
+def protection(mirror, ftype):
+    """Protective states acting on this fire load that the twins show now."""
+    c = layout.FIRE_TYPES[ftype]
+    on = set()
+    if c.get("fuel_valve") and mirror.prop(c["fuel_valve"], "position") == "closed":
+        on.add("fuel_cut")
+    if (c.get("deluge") and mirror.prop(c["deluge"], "position") == "open"
+            and mirror.prop("fire-main", "state") == "ok"):
+        on.add("deluge")
+    if c.get("powered_factor") and mirror.prop(c["power"], "power") == "off":
+        on.add("unpowered")
+    if c.get("running_factor") and mirror.prop("conveyor-640", "state") == "stopped":
+        on.add("stopped")
+    return on
+
+
+def watch_protection(mirror, now, acted):
+    """Keeps acted[f"{fire type}:{state}"] = time the state was first seen."""
+    for ftype in layout.FIRE_TYPES:
+        on = protection(mirror, ftype)
+        for state in ("fuel_cut", "deluge", "unpowered", "stopped"):
+            key = f"{ftype}:{state}"
+            if state in on:
+                acted.setdefault(key, now)
+            else:
+                acted.pop(key, None)
+
+
+def _factor(cfg, since, t):
+    """Fire factor at time t given since[state] = when each protective state began.
+    The fire responds with a 45 s lag; ACT_LAG_S stands for most of it."""
+    def on(state):
+        return state in since and t >= since[state] + ACT_LAG_S
+    f = 1.0
+    if cfg.get("running_factor") and not on("stopped"):
+        f *= cfg["running_factor"]
+    if cfg.get("powered_factor") and not on("unpowered"):
+        f *= cfg["powered_factor"]
+    if cfg.get("deluge") and on("deluge"):
+        f *= cfg["suppress_factor"]
+    if "fuel_cut" in since and t > since["fuel_cut"]:
+        f *= math.exp(-(t - since["fuel_cut"]) / 240.0)
+    return f
+
+
+def estimate(mirror, cand, now, alarm_seen=None, first_alarm_at=None, last=None, acted=None, q_ref=None):
+    """Fills hrr_mw, age_s, method and basis of a located fire.
+
+    CO method: the CO mass flow through a downstream station gives the heat
+    release when that air passed the fire, distance/velocity ago. Divided
+    by what the protection did to the fire at that moment, it gives the age
+    on the t-squared curve; the fire now is the curve at age + delay times
+    what the protection does now. The largest value over the stations is
+    kept: where the smoke splits, one branch carries only part of it.
+    Stations in nearly still air (behind a closed door) are skipped.
+    Vehicle method, when the on-board system fired: time since detection.
+    last: the previous estimate of the same fire; its age only grows.
+    acted: watch_protection() record, so that the moment of each action is known.
+    q_ref: airflows from before the alarm (flow_dirs())."""
+    ftype = cand["type"]
+    cfg = layout.FIRE_TYPES[ftype]
+    since = max(0.0, now - first_alarm_at) if first_alarm_at is not None else 0.0
+    floor = since
+    if last and last.get("type") == ftype and last.get("age_s") is not None:
+        floor = max(floor, last["age_s"] + max(0.0, now - last.get("at", now)))
+    began = {}
+    for state in protection(mirror, ftype):
+        began[state] = (acted or {}).get(f"{ftype}:{state}",
+                                         first_alarm_at if first_alarm_at is not None else now)
+    f_now = _factor(cfg, began, now)
+    hrr = age = None
+    method, basis = "", None
+    vid = cand.get("vehicle")
+    if vid and cand.get("alarm") and alarm_seen and vid in alarm_seen:
+        age = now - alarm_seen[vid] + layout.ONBOARD_DETECT_S
+        hrr, basis = _vehicle_hrr(ftype, age), vid
+        method = f"по времени от срабатывания бортовой системы ({round(age)} с) и кривой натурных испытаний"
+    else:
+        best = None
+        for sid, dist in cand.get("reach", {}).items():
+            if mirror.prop(sid, "state") == "fault":
+                continue
+            co = float(mirror.prop(sid, "co", default=0) or 0) - CO_BACKGROUND
+            vel = abs(float(mirror.prop(sid, "velocity", default=0) or 0))
+            eid = layout.SENSORS[sid]["edge"]
+            area = layout.EDGES[eid]["area"]
+            # the air arriving now left the fire before the protection slowed it
+            vel_t = max(vel, abs((q_ref or {}).get(eid, 0.0)) / area)
+            if co < 2.0 or vel < 0.3 or dist / vel_t > 900.0:
+                continue
+            m_co = co * 1e-6 * vel * area * CO_DENSITY
+            hrr_s = m_co / cfg["co_yield"] * layout.HEAT_OF_COMBUSTION / 1e6
+            if hrr_s < 0.02:
+                continue
+            delay = dist / vel_t
+            f_then = max(1e-3, _factor(cfg, began, now - delay))
+            a = max(_age_for(ftype, hrr_s / f_then) + delay, floor)
+            h = _curve(ftype, a) * f_now
+            if best is None or h > best[0]:
+                best = (h, a, sid, hrr_s, delay)
+        if best:
+            hrr, age, basis, hrr_s, delay = best
+            method = (f"по CO на {basis} ({hrr_s:.1f} МВт {round(delay)} с назад) "
+                      "с учётом развития пожара и действий защиты")
+    if hrr is None:
+        age = max(floor, since + 60.0)
+        hrr = _curve(ftype, age) * f_now
+        method = ("по кривой развития пожара от предыдущей оценки" if last else
+                  "по кривой развития пожара от первого аварийного сигнала")
+    cand["hrr_mw"] = round(min(hrr, cfg["peak_mw"] * 1.3), 1)
+    cand["age_s"] = round(age)
+    if "fuel_cut" in began:
+        cand["fuel_cut_age_s"] = round(age - (now - began["fuel_cut"]))
+    cand["method"] = method
+    cand["basis"] = basis
+    if basis in layout.SENSORS:
+        cand["sensors"] = [basis] + [s for s in cand.get("sensors", []) if s != basis]
+    return cand
 
 
 # -- rebuilding the model from the twins -------------------------------------------------
 def _desired_value(mirror, name, feature):
     d = mirror.desired(name, feature)
     return d.get("value") if isinstance(d, dict) else None
+
+
+def _place_fire(m, est, age):
+    f = Fire(est["type"])
+    f.edge, f.s = est["edge"], est["s"]
+    f.t = max(0.0, age)
+    free = max(1e-6, f.curve(f.t))
+    f.hrr_mw = est["hrr_mw"] if est.get("hrr_mw") is not None else free
+    f.factor = min(2.5, max(0.02, f.hrr_mw / free))
+    if est.get("fuel_cut_age_s") is not None and est["fuel_cut_age_s"] <= f.t:
+        f.fuel_cut_at = est["fuel_cut_age_s"]
+    m.fire = f
+    if est.get("vehicle"):
+        v = m.vehicles[est["vehicle"]]
+        v.on_fire = True
+        v.parked = True
+        v.fixed_pos = (est["edge"], est["s"])
+        if not est.get("alarm"):
+            v.suppression = "failed"
+        elif f.t >= layout.ONBOARD_DETECT_S:
+            v.fire_alarm = True
+            v.suppression = "discharged"
+            f.onboard_at = layout.ONBOARD_DETECT_S
+    m.emergency_at = m.t
 
 
 def model_from_twins(mirror, est):
@@ -195,21 +355,52 @@ def model_from_twins(mirror, est):
             a.co[i] = max(0.0, co_max) * frac
             a.dtk[i] = max(0.0, t_max - a.t_amb) * frac
     if est:
-        f = Fire(est["type"])
-        f.edge, f.s = est["edge"], est["s"]
-        c = f.cfg
-        ratio = min(1.0, max(0.02, est["hrr_mw"] / c["peak_mw"]))
-        f.t = c["t_peak_s"] * math.sqrt(ratio)
-        f.hrr_mw = est["hrr_mw"]
-        m.fire = f
-        if est.get("vehicle"):
-            v = m.vehicles[est["vehicle"]]
-            v.on_fire = True
-            v.fire_alarm = True
-            v.suppression = "discharged"
-            f.onboard_at = f.t - 60.0
-        m.emergency_at = m.t
+        _place_fire(m, est, est.get("age_s", 0.0))
     m.net.solve()
+    return m
+
+
+def counterfactual(pre_things, mirror, est, now):
+    """The mine as it would be without the protection: the twins from just
+    before the first alarm (doors open, plant running, people at work), the
+    fire set back to its estimated age at that moment. Physical faults that
+    the twins have shown since (a tripped fan, the cage out of service) stay."""
+    pre = ditto.Mirror()
+    pre.things = pre_things
+    m = model_from_twins(pre, None)
+    for fid, fan in m.fans.items():
+        if mirror.prop(fid, "state") == "tripped":
+            fan.tripped = True
+    if mirror.prop("hoist-cage", "state") == "out_of_service":
+        m.cage_ok = False
+    if est:
+        age0 = est.get("age_s", 0.0) - (now - m.t)
+        if age0 < 0:
+            m.step(-age0)
+            age0 = 0.0
+        _place_fire(m, dict(est, hrr_mw=None), age0)
+    m.net.solve()
+    return m
+
+
+def rolled_back(mirror, est):
+    """Fallback baseline when no pre-alarm state was recorded: today's twins
+    with every actuator back to normal and no evacuation order."""
+    m = model_from_twins(mirror, est)
+    for door in m.doors.values():
+        door.desired = door.cfg["normal"]
+    for v in m.valves.values():
+        v.desired = v.cfg["normal"]
+    for sub in m.subs.values():
+        sub.desired = "on"
+    for fan in m.fans.values():
+        fan.desired_mode = "normal"
+        fan.desired_run = fan.cfg["role"] == "duty"
+    m.conveyor_run = m.crusher_run = True
+    m.evac_order = m.evac_order_at = None
+    for crew in m.crews.values():
+        if crew.state == "evacuating":
+            crew.state, crew.aware_at = "working", None
     return m
 
 
@@ -221,7 +412,7 @@ def _node_dist(crew, node):
 
 # -- options ------------------------------------------------------------------------------
 def apply_option(m, option, position):
-    if option == "nothing":
+    if option in ("no_paz", "no_new"):
         return
     for name, feature, value, _ in (position or {}).get("actions", []):
         m.apply_desired(name, feature, value)
@@ -234,97 +425,126 @@ def apply_option(m, option, position):
                 fan.desired_run = True
 
 
-def simulate(m, option, position):
+def simulate(m, option, position, t_from=None):
+    """Runs the model to t_from + HORIZON_S; reports what happens after t_from
+    (now). A counterfactual starts earlier and is first brought up to now."""
     apply_option(m, option, position)
-    t0 = m.t
+    t0 = m.t if t_from is None else t_from
+    while m.t < t0 - 1e-6:
+        m.step(min(SAMPLE_S, t0 - m.t))
     series = []
     smoke_pm = 0.0
-    while m.t - t0 < HORIZON_S:
+    while m.t - t0 < HORIZON_S - 1e-6:
         m.step(SAMPLE_S)
         k = m.kpi()
         for c in m.crews.values():
             if not c.safe and (c.vis < 10.0 or (c.co > layout.CO_ALARM_PPM and not c.sr_on)):
                 smoke_pm += c.people * SAMPLE_S / 60.0
         series.append(dict(t=round((m.t - t0) / 60), safe=k["people_safe"], risk=k["people_at_risk"],
-                           fed=round(k["max_fed"], 3), injured=k["people_injured"]))
+                           fed=round(k["max_fed"], 3), injured=k["people_injured"], smoke_pm=round(smoke_pm),
+                           fire_mw=round(m.fire.hrr_mw, 1) if m.fire else 0.0,
+                           co={n: round(m.node_c[n][0] + 1.0, 1) for n in KEY_POINTS}))
     k = m.kpi()
-    exits = []
-    for n in layout.CAGE_STATIONS:
-        exits.append(dict(node=n, co=round(m.node_c[n][0] + 1.0, 1)))
+    exits = [dict(node=n, co=round(m.node_c[n][0] + 1.0, 1)) for n in layout.CAGE_STATIONS]
     harm = k["people_injured"] * 1000 + k["people_at_risk"] * 100 + k["max_fed"] * 300 + smoke_pm
     return dict(option=option, people_safe=k["people_safe"], people_total=k["people_total"],
-                people_at_risk=k["people_at_risk"], people_injured=k["people_injured"],
-                max_fed=round(k["max_fed"], 3), smoke_person_min=round(smoke_pm),
+                people_at_risk=k["people_at_risk"], people_at_risk_max=max((s["risk"] for s in series), default=0),
+                people_injured=k["people_injured"], max_fed=round(k["max_fed"], 3), smoke_person_min=round(smoke_pm),
                 fire_mw=round(m.fire.hrr_mw, 1) if m.fire else 0.0,
                 exits=exits, airflow=round(m.net.q["fan"], 1), harm=round(harm, 1), series=series)
 
 
-TITLES = {"nothing": "Без действий", "normal": "Нормальный режим + действия ПЛА", "reverse": "Реверс + действия ПЛА"}
+TITLES = {"no_paz": "Без ПАЗ (если бы защита не сработала)", "no_new": "Без новых действий",
+          "normal": "Нормальный режим + действия ПЛА", "reverse": "Реверс + действия ПЛА"}
 
 
-def analyse(mirror, position_id=None, last_est=None, q_ref=None):
-    """q_ref: airflow directions from before the alarm. The sensors raised the
+def _position(pid):
+    return next((p for p in pla.POSITIONS if p["id"] == pid), None)
+
+
+def analyse(mirror, paz_position=None, last_est=None, q_ref=None, pre=None, alarm_seen=None, first_alarm_at=None,
+            acted=None):
+    """paz_position: the position the protection has entered (id or None).
+    q_ref: airflow directions from before the alarm. The sensors raised the
     alarm under that ventilation, so the fire is traced along it even after the
     protection system has reversed the air.
     last_est: the previous fire estimate, used while the emergency is still
-    declared but the air change has moved the smoke away from every sensor."""
+    declared but the air change has moved the smoke away from every sensor.
+    pre: the twins just before the first alarm, for the no-protection baseline.
+    acted: when each protective state was first seen (watch_protection())."""
     now = float(mirror.prop("mine", "sim_time", default=0) or 0)
     est = (locate(mirror, q_ref) if q_ref else None) or locate(mirror)
     held = False
     if est:
+        estimate(mirror, est, now, alarm_seen, first_alarm_at, last_est, acted, q_ref)
+        est.pop("reach", None)
         est["at"] = now
     elif last_est:
-        cfg = layout.FIRE_TYPES[last_est["type"]]
-        t_old = cfg["t_peak_s"] * math.sqrt(min(1.0, max(0.02, last_est["hrr_mw"] / cfg["peak_mw"])))
-        t_new = t_old + max(0.0, now - last_est.get("at", now))
-        hrr = round(min(cfg["peak_mw"], cfg["peak_mw"] * (t_new / cfg["t_peak_s"]) ** 2), 1)
-        est = dict(last_est, hrr_mw=max(last_est["hrr_mw"], hrr), at=now, held=True,
+        age = last_est.get("age_s", 0.0) + max(0.0, now - last_est.get("at", now))
+        free_old = max(1e-6, _curve(last_est["type"], last_est.get("age_s", 0.0)))
+        factor = last_est["hrr_mw"] / free_old
+        est = dict(last_est, age_s=round(age), hrr_mw=round(_curve(last_est["type"], age) * factor, 1), at=now, held=True,
+                   method="по кривой развития пожара: датчики у очага не в тревоге после смены направления воздуха",
                    confidence=round(min(0.5, last_est.get("confidence", 0.5)), 2))
         held = True
     fan_trip = any(mirror.prop(f, "state") == "tripped" for f in layout.FANS)
     if not est and not fan_trip:
-        return dict(state="normal", estimate=None, options=[], recommendation="", audit="")
-    position = None
-    if position_id:
-        position = next((p for p in pla.POSITIONS if p["id"] == position_id), None)
+        return dict(state="normal", estimate=None, options=[], recommendation="", audit="", proposal=None)
+    paz_pos = _position(paz_position) if paz_position else None
+    located = pla.for_fire(est["type"]) if est else None
+    position = located or paz_pos
     if position is None and est:
         alarmed = [s for s in layout.SENSORS if mirror.prop(s, "state") == "alarm"]
         position = pla.match(alarmed, [est["vehicle"]] if est.get("vehicle") else [])
     options = []
-    for opt in ("nothing", "normal", "reverse"):
+    if pre:
+        m = counterfactual(pre, mirror, est, now)
+    else:
+        m = rolled_back(mirror, est)
+    options.append(dict(simulate(m, "no_paz", None, t_from=now), title=TITLES["no_paz"],
+                        basis="состояние до тревоги" if pre else "текущее состояние, исполнительные органы в норме"))
+    for opt in ("no_new", "normal", "reverse"):
         m = model_from_twins(mirror, est)
-        r = simulate(m, opt, position)
-        r["title"] = TITLES[opt]
-        options.append(r)
+        options.append(dict(simulate(m, opt, position), title=TITLES[opt]))
     # on a tie keep the plan's ventilation mode, or the current one: no switch without a gain
     current = mirror.prop("gvu", "mode", default="normal")
     preferred = position.get("ventilation", current) if position else current
-    ranked = sorted([o for o in options if o["option"] != "nothing"], key=lambda o: o["harm"])
+    ranked = sorted([o for o in options if o["option"] in ("normal", "reverse")], key=lambda o: o["harm"])
     if ranked[1]["harm"] - ranked[0]["harm"] <= 1 and ranked[1]["option"] == preferred:
         ranked.reverse()
-    best = ranked[0]
-    other = ranked[1]
-    base = options[0]
+    best, other = ranked
+    by = {o["option"]: o for o in options}
+
     def summary(o):
-        return (f"под угрозой {o['people_at_risk']} чел., макс. доза FED {o['max_fed']:.2f}, "
+        return (f"под угрозой {o['people_at_risk']} чел. (макс. {o['people_at_risk_max']}), макс. доза FED {o['max_fed']:.2f}, "
                 f"в дыму {o['smoke_person_min']} чел.·мин")
 
     rec = ("Датчики у очага сейчас не в тревоге (воздух изменил направление), прогноз по последнему "
            "найденному месту пожара. " if held else "")
     rec += (f"{best['title']}: через 30 мин в безопасности {best['people_safe']} из {best['people_total']} чел., "
-           f"{summary(best)}")
+            f"{summary(best)}")
     if best["harm"] < other["harm"] - 1:
         rec += f". «{other['title']}» хуже: {summary(other)}"
     else:
         rec += f". «{other['title']}» даёт тот же результат"
-    rec += f". Без действий: {summary(base)}."
-    audit = ""
+    rec += f". Без новых действий: {summary(by['no_new'])}. Без ПАЗ: {summary(by['no_paz'])}."
+    audit_parts = []
+    proposal = None
+    if located and (paz_pos is None or paz_pos["id"] != located["id"]):
+        proposal = dict(value=located["id"], title=located["title"], fire=est["label"],
+                        confidence=est.get("confidence"), paz_position=paz_pos["id"] if paz_pos else None)
+        if paz_pos is None or paz_pos["id"] == pla.GENERIC["id"]:
+            audit_parts.append(f"ПАЗ ввела {paz_pos['title'] if paz_pos else 'только общий сигнал'}: место пожара не определено. "
+                               f"По датчикам и направлениям воздуха очаг — {est['label']}; предлагается {located['title']}.")
+        else:
+            audit_parts.append(f"ПАЗ ввела {paz_pos['title']}, а очаг по датчикам — {est['label']}: "
+                               f"предлагается {located['title']}, переход после подтверждения диспетчера.")
     if position:
         plan_vent = position.get("ventilation", "normal")
         if plan_vent != best["option"] and abs(best["harm"] - other["harm"]) > 1:
-            audit = (f"{position['title']}: план предписывает {'реверс' if plan_vent == 'reverse' else 'нормальный режим'}, "
-                     f"прогноз показывает, что «{best['title']}» безопаснее. Рекомендуется пересмотреть позицию ПЛА.")
+            audit_parts.append(f"{position['title']}: план предписывает {'реверс' if plan_vent == 'reverse' else 'нормальный режим'}, "
+                               f"прогноз показывает, что «{best['title']}» безопаснее. Рекомендуется пересмотреть позицию ПЛА.")
         else:
-            audit = f"{position['title']}: решение плана подтверждается прогнозом."
-    return dict(state="emergency", estimate=est, options=options, recommendation=rec, audit=audit,
-                position=position["id"] if position else None, held=held, best=best["option"])
+            audit_parts.append(f"{position['title']}: решение плана о проветривании подтверждается прогнозом.")
+    return dict(state="emergency", estimate=est, options=options, recommendation=rec, audit=" ".join(audit_parts),
+                position=position["id"] if position else None, held=held, best=best["option"], proposal=proposal)

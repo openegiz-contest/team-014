@@ -47,6 +47,16 @@ FAN_TRIP = dict(id="P7", title="Поз. 7. Аварийная остановка
                 standby_start_s=120.0, evacuate_after_s=600.0)
 
 
+FIRE_POSITION = {"depot": "P1", "charger": "P2", "conveyor": "P3", "bev_lhd": "P4", "bev_truck": "P5",
+                 "substation": "P6"}
+
+
+def for_fire(fire_type):
+    """Plan position for a located fire of the given type."""
+    pid = FIRE_POSITION.get(fire_type)
+    return next((p for p in POSITIONS if p["id"] == pid), None)
+
+
 def match(alarmed_sensors, alarmed_vehicles):
     """First position whose vehicles or sensors are in alarm."""
     for p in POSITIONS:

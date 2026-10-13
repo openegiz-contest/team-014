@@ -476,6 +476,11 @@
                   "text": "отказ исполнения",
                   "color": "#ef4b4b",
                   "index": 4
+                },
+                "disabled": {
+                  "text": "выведена из работы",
+                  "color": "#ef4b4b",
+                  "index": 5
                 }
               }
             }
@@ -594,15 +599,20 @@
             {
               "type": "value",
               "options": {
+                "none": {
+                  "text": "аварии нет",
+                  "color": "#8592a3",
+                  "index": 0
+                },
                 "normal": {
                   "text": "нормальный режим + ПЛА",
                   "color": "#3fb68b",
-                  "index": 0
+                  "index": 1
                 },
                 "reverse": {
                   "text": "реверс + ПЛА",
                   "color": "#e5a50a",
-                  "index": 1
+                  "index": 2
                 }
               }
             }
@@ -645,12 +655,12 @@
             "type": "influxdb",
             "uid": "opentwins-influxdb"
           },
-          "query": "from(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:gs-/ and r._field == \"value_co_properties_value\")\n  |> keep(columns: [\"_time\", \"_value\", \"thingId\"])\n  |> group(columns: [\"thingId\"])"
+          "query": "import \"dict\"\n\nnames = [\"bolashak:gs-480-c\": \"Узел околоствольного двора -480\", \"bolashak:gs-480-e\": \"Узел Восточного штрека -480\", \"bolashak:gs-480-o\": \"Узел подготовительного участка -480\", \"bolashak:gs-480-se\": \"Узел Юго-Восточного штрека -480\", \"bolashak:gs-480-r\": \"Узел вентиляционного штрека -480\", \"bolashak:gs-560-c\": \"Узел откаточного штрека -560\", \"bolashak:gs-560-p\": \"Узел очистного участка -560\", \"bolashak:gs-560-b\": \"Узел исходящей зарядной камеры -560\", \"bolashak:gs-560-r\": \"Узел вентиляционной сбойки -560\", \"bolashak:gs-640-c\": \"Узел откаточного штрека -640\", \"bolashak:gs-640-conv\": \"Узел конвейерного штрека -640\", \"bolashak:gs-640-p\": \"Узел очистного участка -640\", \"bolashak:gs-640-d\": \"Узел исходящей склада ГСМ -640\", \"bolashak:gs-640-r\": \"Узел вентиляционного штрека -640\", \"bolashak:gs-ramp\": \"Узел рампы -640 – -560\", \"bolashak:gs-vs\": \"Узел исходящей струи шахты (ГВУ)\", \"bolashak:shaft-cage\": \"Клетевой ствол\", \"bolashak:shaft-skip\": \"Скиповой ствол\", \"bolashak:shaft-vent\": \"Вентиляционный ствол\", \"bolashak:lhd-01\": \"ПДМ №1\", \"bolashak:lhd-02\": \"ПДМ №2\", \"bolashak:lhd-03\": \"ПДМ №3\", \"bolashak:truck-01\": \"Самосвал №1\", \"bolashak:truck-02\": \"Самосвал №2\", \"bolashak:truck-03\": \"Самосвал №3\"]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:gs-/ and r._field == \"value_co_properties_value\")\n  |> map(fn: (r) => ({r with name: dict.get(dict: names, key: r.thingId, default: r.thingId)}))\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])\n  |> group(columns: [\"name\"])"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.thingId}",
+          "displayName": "${__field.labels.name}",
           "unit": "ppm",
           "thresholds": {
             "mode": "absolute",
@@ -713,12 +723,12 @@
             "type": "influxdb",
             "uid": "opentwins-influxdb"
           },
-          "query": "from(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:gs-/ and r._field == \"value_visibility_properties_value\")\n  |> keep(columns: [\"_time\", \"_value\", \"thingId\"])\n  |> group(columns: [\"thingId\"])"
+          "query": "import \"dict\"\n\nnames = [\"bolashak:gs-480-c\": \"Узел околоствольного двора -480\", \"bolashak:gs-480-e\": \"Узел Восточного штрека -480\", \"bolashak:gs-480-o\": \"Узел подготовительного участка -480\", \"bolashak:gs-480-se\": \"Узел Юго-Восточного штрека -480\", \"bolashak:gs-480-r\": \"Узел вентиляционного штрека -480\", \"bolashak:gs-560-c\": \"Узел откаточного штрека -560\", \"bolashak:gs-560-p\": \"Узел очистного участка -560\", \"bolashak:gs-560-b\": \"Узел исходящей зарядной камеры -560\", \"bolashak:gs-560-r\": \"Узел вентиляционной сбойки -560\", \"bolashak:gs-640-c\": \"Узел откаточного штрека -640\", \"bolashak:gs-640-conv\": \"Узел конвейерного штрека -640\", \"bolashak:gs-640-p\": \"Узел очистного участка -640\", \"bolashak:gs-640-d\": \"Узел исходящей склада ГСМ -640\", \"bolashak:gs-640-r\": \"Узел вентиляционного штрека -640\", \"bolashak:gs-ramp\": \"Узел рампы -640 – -560\", \"bolashak:gs-vs\": \"Узел исходящей струи шахты (ГВУ)\", \"bolashak:shaft-cage\": \"Клетевой ствол\", \"bolashak:shaft-skip\": \"Скиповой ствол\", \"bolashak:shaft-vent\": \"Вентиляционный ствол\", \"bolashak:lhd-01\": \"ПДМ №1\", \"bolashak:lhd-02\": \"ПДМ №2\", \"bolashak:lhd-03\": \"ПДМ №3\", \"bolashak:truck-01\": \"Самосвал №1\", \"bolashak:truck-02\": \"Самосвал №2\", \"bolashak:truck-03\": \"Самосвал №3\"]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:gs-/ and r._field == \"value_visibility_properties_value\")\n  |> map(fn: (r) => ({r with name: dict.get(dict: names, key: r.thingId, default: r.thingId)}))\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])\n  |> group(columns: [\"name\"])"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.thingId}",
+          "displayName": "${__field.labels.name}",
           "unit": "lengthm",
           "thresholds": {
             "mode": "absolute",
@@ -1069,12 +1079,12 @@
             "type": "influxdb",
             "uid": "opentwins-influxdb"
           },
-          "query": "from(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:shaft-/ and r._field == \"value_airflow_properties_value\")\n  |> keep(columns: [\"_time\", \"_value\", \"thingId\"])\n  |> group(columns: [\"thingId\"])"
+          "query": "import \"dict\"\n\nnames = [\"bolashak:gs-480-c\": \"Узел околоствольного двора -480\", \"bolashak:gs-480-e\": \"Узел Восточного штрека -480\", \"bolashak:gs-480-o\": \"Узел подготовительного участка -480\", \"bolashak:gs-480-se\": \"Узел Юго-Восточного штрека -480\", \"bolashak:gs-480-r\": \"Узел вентиляционного штрека -480\", \"bolashak:gs-560-c\": \"Узел откаточного штрека -560\", \"bolashak:gs-560-p\": \"Узел очистного участка -560\", \"bolashak:gs-560-b\": \"Узел исходящей зарядной камеры -560\", \"bolashak:gs-560-r\": \"Узел вентиляционной сбойки -560\", \"bolashak:gs-640-c\": \"Узел откаточного штрека -640\", \"bolashak:gs-640-conv\": \"Узел конвейерного штрека -640\", \"bolashak:gs-640-p\": \"Узел очистного участка -640\", \"bolashak:gs-640-d\": \"Узел исходящей склада ГСМ -640\", \"bolashak:gs-640-r\": \"Узел вентиляционного штрека -640\", \"bolashak:gs-ramp\": \"Узел рампы -640 – -560\", \"bolashak:gs-vs\": \"Узел исходящей струи шахты (ГВУ)\", \"bolashak:shaft-cage\": \"Клетевой ствол\", \"bolashak:shaft-skip\": \"Скиповой ствол\", \"bolashak:shaft-vent\": \"Вентиляционный ствол\", \"bolashak:lhd-01\": \"ПДМ №1\", \"bolashak:lhd-02\": \"ПДМ №2\", \"bolashak:lhd-03\": \"ПДМ №3\", \"bolashak:truck-01\": \"Самосвал №1\", \"bolashak:truck-02\": \"Самосвал №2\", \"bolashak:truck-03\": \"Самосвал №3\"]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:shaft-/ and r._field == \"value_airflow_properties_value\")\n  |> map(fn: (r) => ({r with name: dict.get(dict: names, key: r.thingId, default: r.thingId)}))\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])\n  |> group(columns: [\"name\"])"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.thingId}",
+          "displayName": "${__field.labels.name}",
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 6,
@@ -1196,12 +1206,12 @@
             "type": "influxdb",
             "uid": "opentwins-influxdb"
           },
-          "query": "from(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:(lhd|truck)-/ and r._field == \"value_battery_properties_value\")\n  |> keep(columns: [\"_time\", \"_value\", \"thingId\"])\n  |> group(columns: [\"thingId\"])"
+          "query": "import \"dict\"\n\nnames = [\"bolashak:gs-480-c\": \"Узел околоствольного двора -480\", \"bolashak:gs-480-e\": \"Узел Восточного штрека -480\", \"bolashak:gs-480-o\": \"Узел подготовительного участка -480\", \"bolashak:gs-480-se\": \"Узел Юго-Восточного штрека -480\", \"bolashak:gs-480-r\": \"Узел вентиляционного штрека -480\", \"bolashak:gs-560-c\": \"Узел откаточного штрека -560\", \"bolashak:gs-560-p\": \"Узел очистного участка -560\", \"bolashak:gs-560-b\": \"Узел исходящей зарядной камеры -560\", \"bolashak:gs-560-r\": \"Узел вентиляционной сбойки -560\", \"bolashak:gs-640-c\": \"Узел откаточного штрека -640\", \"bolashak:gs-640-conv\": \"Узел конвейерного штрека -640\", \"bolashak:gs-640-p\": \"Узел очистного участка -640\", \"bolashak:gs-640-d\": \"Узел исходящей склада ГСМ -640\", \"bolashak:gs-640-r\": \"Узел вентиляционного штрека -640\", \"bolashak:gs-ramp\": \"Узел рампы -640 – -560\", \"bolashak:gs-vs\": \"Узел исходящей струи шахты (ГВУ)\", \"bolashak:shaft-cage\": \"Клетевой ствол\", \"bolashak:shaft-skip\": \"Скиповой ствол\", \"bolashak:shaft-vent\": \"Вентиляционный ствол\", \"bolashak:lhd-01\": \"ПДМ №1\", \"bolashak:lhd-02\": \"ПДМ №2\", \"bolashak:lhd-03\": \"ПДМ №3\", \"bolashak:truck-01\": \"Самосвал №1\", \"bolashak:truck-02\": \"Самосвал №2\", \"bolashak:truck-03\": \"Самосвал №3\"]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:(lhd|truck)-/ and r._field == \"value_battery_properties_value\")\n  |> map(fn: (r) => ({r with name: dict.get(dict: names, key: r.thingId, default: r.thingId)}))\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])\n  |> group(columns: [\"name\"])"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.thingId}",
+          "displayName": "${__field.labels.name}",
           "unit": "percent",
           "custom": {
             "lineWidth": 2,
@@ -1246,12 +1256,12 @@
             "type": "influxdb",
             "uid": "opentwins-influxdb"
           },
-          "query": "from(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:gs-/ and r._field == \"value_temperature_properties_value\")\n  |> keep(columns: [\"_time\", \"_value\", \"thingId\"])\n  |> group(columns: [\"thingId\"])"
+          "query": "import \"dict\"\n\nnames = [\"bolashak:gs-480-c\": \"Узел околоствольного двора -480\", \"bolashak:gs-480-e\": \"Узел Восточного штрека -480\", \"bolashak:gs-480-o\": \"Узел подготовительного участка -480\", \"bolashak:gs-480-se\": \"Узел Юго-Восточного штрека -480\", \"bolashak:gs-480-r\": \"Узел вентиляционного штрека -480\", \"bolashak:gs-560-c\": \"Узел откаточного штрека -560\", \"bolashak:gs-560-p\": \"Узел очистного участка -560\", \"bolashak:gs-560-b\": \"Узел исходящей зарядной камеры -560\", \"bolashak:gs-560-r\": \"Узел вентиляционной сбойки -560\", \"bolashak:gs-640-c\": \"Узел откаточного штрека -640\", \"bolashak:gs-640-conv\": \"Узел конвейерного штрека -640\", \"bolashak:gs-640-p\": \"Узел очистного участка -640\", \"bolashak:gs-640-d\": \"Узел исходящей склада ГСМ -640\", \"bolashak:gs-640-r\": \"Узел вентиляционного штрека -640\", \"bolashak:gs-ramp\": \"Узел рампы -640 – -560\", \"bolashak:gs-vs\": \"Узел исходящей струи шахты (ГВУ)\", \"bolashak:shaft-cage\": \"Клетевой ствол\", \"bolashak:shaft-skip\": \"Скиповой ствол\", \"bolashak:shaft-vent\": \"Вентиляционный ствол\", \"bolashak:lhd-01\": \"ПДМ №1\", \"bolashak:lhd-02\": \"ПДМ №2\", \"bolashak:lhd-03\": \"ПДМ №3\", \"bolashak:truck-01\": \"Самосвал №1\", \"bolashak:truck-02\": \"Самосвал №2\", \"bolashak:truck-03\": \"Самосвал №3\"]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r.thingId =~ /^bolashak:gs-/ and r._field == \"value_temperature_properties_value\")\n  |> map(fn: (r) => ({r with name: dict.get(dict: names, key: r.thingId, default: r.thingId)}))\n  |> keep(columns: [\"_time\", \"_value\", \"name\"])\n  |> group(columns: [\"name\"])"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.thingId}",
+          "displayName": "${__field.labels.name}",
           "unit": "celsius",
           "thresholds": {
             "mode": "absolute",
@@ -1314,7 +1324,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.thingId}",
+          "displayName": "Давление в пожарно-оросительном трубопроводе, бар",
           "thresholds": {
             "mode": "absolute",
             "steps": [

@@ -209,6 +209,10 @@ TRUCKS = {
     "truck-03": dict(name="Самосвал Minetruck MT42 SG №3", model="Epiroc Minetruck MT42 SG", payload_t=42.0, battery_kwh=465.0,
                      route=["E480", "J560", "J640"], start_s=0.3),
 }
+# Below 20 % charge a vehicle drives empty to the swap bay of the charging
+# chamber, swaps the battery (assumption: 10 min) and returns to its route.
+SWAP_NODE = "B560"
+BATTERY_SWAP_S = 600.0
 DRILLS = {
     "drill-01": dict(name="Буровая установка Simba E70 S", model="Epiroc Simba E70 S", node="P640", edge="d640_j_p", s=0.92),
     "bolter-01": dict(name="Установка крепления Cabletec M10 S", model="Epiroc Cabletec M10 S", node="O480", edge="d480_o_r", s=0.15),
@@ -296,6 +300,7 @@ FIRE_TYPES = {
                   peak_mw=25.0, t_peak_s=300.0, plateau_s=1200.0, decay_s=600.0, co_yield=0.04, soot_yield=0.14,
                   suppress_factor=0.3, fuel_valve="esd-fuel-640", deluge="dv-640-depot"),
 }
+ONBOARD_DETECT_S = 20.0       # on-board fire detection of a vehicle fires this long after ignition
 HEAT_OF_COMBUSTION = 30.0e6   # J/kg, mixed rubber/oil/plastics (assumption)
 CONVECTIVE_FRACTION = 0.7
 SOOT_EXTINCTION = 8700.0      # m2/kg, mass specific extinction (SFPE handbook)

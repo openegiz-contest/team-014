@@ -20,6 +20,7 @@ GRAFANA = os.environ.get("GRAFANA_URL", "http://grafana:3000")
 GRAFANA_AUTH = "Basic " + base64.b64encode(f"admin:{os.environ.get('GRAFANA_ADMIN_PASSWORD', '')}".encode()).decode()
 VIZ = os.environ.get("VIZ_URL", "http://bolashak-viz")
 SCENARIO = os.environ.get("CHECK_SCENARIO", "bev_lhd")
+STUDY = os.environ.get("CHECK_STUDY", "bev_lhd_blind")
 
 failed = 0
 
@@ -167,6 +168,7 @@ def check_scenario():
         if not adv_done and feature(things, "advisor", "state") == "forecast":
             adv_done = True
             ok(f"советчик: {feature(things, 'advisor', 'recommendation')}")
+            check_options(feature(things, "advisor", "options"))
     if not started:
         fail("симулятор не принял сценарий")
     if not paz_done:
@@ -180,13 +182,86 @@ def check_scenario():
 
     set_scenario("normal", seq + 1)
     deadline = time.time() + 60
+    back = False
     while time.time() < deadline:
         time.sleep(3)
         things = snapshot(names)
-        if feature(things, "control", "scenario") == "normal" and feature(things, "mine", "emergency") == "normal":
+        if not back and feature(things, "control", "scenario") == "normal" and \
+                feature(things, "mine", "emergency") == "normal":
+            back = True
             ok("шахта возвращена в штатный режим")
+        cleared = (feature(things, "advisor", "state") == "normal"
+                   and feature(things, "advisor", "best_option") == "none"
+                   and feature(things, "advisor", "fire_location") == "none"
+                   and feature(things, "advisor", "options") == "[]"
+                   and feature(things, "advisor", "proposal") == "none")
+        if back and cleared:
+            ok("советчик сброшен: нет прогноза, лучшего варианта, очага и предложения для ПАЗ")
             return
-    fail("шахта не вернулась в штатный режим за 60 с")
+    if not back:
+        fail("шахта не вернулась в штатный режим за 60 с")
+    else:
+        fail(f"советчик не сброшен после возврата в норму: состояние {feature(things, 'advisor', 'state')}, "
+             f"лучший вариант {feature(things, 'advisor', 'best_option')}, "
+             f"очаг {feature(things, 'advisor', 'fire_location')}")
+
+
+def check_options(raw):
+    try:
+        options = {o["option"]: o for o in json.loads(raw or "[]")}
+    except (TypeError, ValueError, KeyError):
+        fail("варианты советчика не читаются как JSON")
+        return
+    missing = [k for k in ("no_paz", "no_new", "normal", "reverse") if k not in options]
+    if missing:
+        fail(f"у советчика нет вариантов: {', '.join(missing)}")
+        return
+    bare = [k for k, o in options.items() if not o.get("series")]
+    if bare:
+        fail(f"у вариантов нет временного ряда: {', '.join(bare)}")
+        return
+    base, now = options["no_paz"], options["no_new"]
+    ok(f"советчик сравнивает с базой: «без ПАЗ» {base['people_safe']}/{base['people_total']} в безопасности, "
+       f"FED {base['max_fed']}; «без новых действий» {now['people_safe']}/{now['people_total']}, FED {now['max_fed']}; "
+       f"ряд {len(base['series'])} точек")
+
+
+def check_study():
+    """The bench replays a scenario with the protection in auto, manual and off.
+    The showcase case must actually endanger people, or it shows nothing."""
+    print(f"Стенд сравнения: {STUDY}")
+    key, _, fl = STUDY.partition(":")
+    faults = [f for f in fl.split(",") if f]
+    things = snapshot(["control", "advisor"])
+    asked = things["control"].get("features", {}).get("study", {}).get("desiredProperties", {}).get("seq")
+    seq = max(int(feature(things, "advisor", "study", "seq") or 0), int(asked or 0)) + 1
+    ditto.http("PUT", f"/api/2/things/{thing_id('control')}/features/study/desiredProperties",
+               {"value": key, "scenario": key, "faults": faults, "seq": seq, "by": "mine-check"})
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        time.sleep(3)
+        st = snapshot(["advisor"])["advisor"]["features"].get("study", {}).get("properties", {})
+        if st.get("seq") != seq or st.get("value") not in ("done", "error"):
+            continue
+        if st["value"] == "error":
+            fail(f"стенд: {st.get('message')}")
+            return
+        runs = {r["mode"]: r for r in json.loads(st.get("runs") or "[]")}
+        if not {"auto", "manual", "off"} <= set(runs):
+            fail(f"стенд вернул режимы {sorted(runs)}")
+            return
+        ok(f"стенд: {len(runs)} прогона за {st.get('compute_time')} с")
+        for mode in runs:
+            r = runs[mode]
+            ok(f"  {mode:6} обнаружение {r['detected_at']} с, позиция {r['position']}, в безопасности "
+               f"{r['people_safe']}/{r['people_total']}, под угрозой до {r['people_at_risk_max']}, FED {r['max_fed']}")
+        a = runs["auto"]
+        if a["people_at_risk_max"] > 0 or a["max_fed"] >= 0.3:
+            ok("в показательном сценарии люди в опасности даже при автоматической ПАЗ")
+        else:
+            fail("показательный сценарий никого не подвергает опасности")
+        return
+    fail("стенд не ответил за 180 с")
 
 
 def main():
@@ -196,6 +271,7 @@ def main():
     check_static()
     if "--static" not in sys.argv:
         check_scenario()
+        check_study()
     print()
     print("Проверка пройдена." if not failed else f"Проверка НЕ пройдена: {failed} ошибок.")
     return 1 if failed else 0

@@ -7,9 +7,19 @@ value_<feature>_properties_value."""
 
 import json
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from minecore import layout  # noqa: E402
 
 DS = {"type": "influxdb", "uid": "opentwins-influxdb"}
 NS = "bolashak"
+
+# legend names of the series panels: the dispatcher reads places, not twin ids
+NAMES = {sid: s["name"].replace("Датчик-узел ", "Узел ") for sid, s in layout.SENSORS.items()}
+NAMES.update({"shaft-cage": "Клетевой ствол", "shaft-skip": "Скиповой ствол", "shaft-vent": "Вентиляционный ствол"})
+NAMES.update({vid: v["name"].split(" ")[0] + " №" + v["name"].rsplit("№", 1)[-1]
+              for vid, v in {**layout.LHDS, **layout.TRUCKS}.items()})
 
 
 def text_state(thing, feature):
@@ -19,13 +29,19 @@ def text_state(thing, feature):
 
 def flux(thing, feature, regex=False, fn=None):
     sel = f'r.thingId =~ /^{NS}:{thing}/' if regex else f'r.thingId == "{NS}:{thing}"'
-    q = ('from(bucket: "default")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n'
-         f'  |> filter(fn: (r) => {sel} and r._field == "value_{feature}_properties_value")\n')
+    q = ""
+    if regex:
+        pairs = ", ".join(f'"{NS}:{k}": "{v}"' for k, v in NAMES.items())
+        q += f'import "dict"\n\nnames = [{pairs}]\n\n'
+    q += ('from(bucket: "default")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n'
+          f'  |> filter(fn: (r) => {sel} and r._field == "value_{feature}_properties_value")\n')
     if fn:
         q += f"  |> {fn}\n"
-    q += '  |> keep(columns: ["_time", "_value", "thingId"])'
     if regex:
-        q += '\n  |> group(columns: ["thingId"])'
+        q += ('  |> map(fn: (r) => ({r with name: dict.get(dict: names, key: r.thingId, default: r.thingId)}))\n'
+              '  |> keep(columns: ["_time", "_value", "name"])\n  |> group(columns: ["name"])')
+    else:
+        q += '  |> keep(columns: ["_time", "_value", "thingId"])'
     return q
 
 
@@ -42,7 +58,8 @@ def panel(kind, title, targets, x, y, w, h, unit=None, thresholds=None, mappings
         "id": _id[0], "type": kind, "title": title, "datasource": DS,
         "gridPos": {"x": x, "y": y, "w": w, "h": h},
         "targets": targets,
-        "fieldConfig": {"defaults": {"displayName": "${__field.labels.thingId}"}, "overrides": []},
+        "fieldConfig": {"defaults": {"displayName": "${__field.labels.name}" if any(
+            "group(columns: [\"name\"])" in t["query"] for t in targets) else title}, "overrides": []},
         "options": {},
     }
     if desc:
@@ -95,11 +112,11 @@ panels.append(panel("stat", "Режим шахты", [target(text_state("mine", 
     "normal": ("штатный", GREY), "alarm": ("аварийный сигнал", WARN), "evacuation": ("эвакуация", ALARM), "fan_trip": ("остановка ГВУ", ALARM)})))
 panels.append(panel("stat", "ПАЗ", [target(text_state("paz", "state"))], 6, y, 6, 4, mappings=text_map({
     "standby": ("дежурный режим", GREY), "acting": ("выполняет ПЛА", INFO), "awaiting_dispatcher": ("ждёт диспетчера", WARN),
-    "completed": ("позиция отработана", OK), "fault": ("отказ исполнения", ALARM)})))
+    "completed": ("позиция отработана", OK), "fault": ("отказ исполнения", ALARM), "disabled": ("выведена из работы", ALARM)})))
 panels.append(panel("stat", "Режим проветривания", [target(text_state("gvu", "mode"))], 12, y, 6, 4, mappings=text_map({
     "normal": ("нормальный", GREY), "reverse": ("реверс", WARN), "stopped": ("остановлен", ALARM)})))
 panels.append(panel("stat", "Рекомендация советчика", [target(text_state("advisor", "best_option"))], 18, y, 6, 4, mappings=text_map({
-    "normal": ("нормальный режим + ПЛА", OK), "reverse": ("реверс + ПЛА", WARN)})))
+    "none": ("аварии нет", GREY), "normal": ("нормальный режим + ПЛА", OK), "reverse": ("реверс + ПЛА", WARN)})))
 y += 4
 panels.append(panel("timeseries", "CO на газоаналитических узлах, ppm", [target(flux("gs-", "co", regex=True))], 0, y, 12, 9, unit="ppm",
                     thresholds=[{"color": GREY, "value": None}, {"color": WARN, "value": 17}, {"color": ALARM, "value": 50}],
@@ -155,6 +172,6 @@ dashboard = {
 }
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bolashak.json")
-with open(out, "w", encoding="utf-8") as f:
+with open(out, "w", encoding="utf-8", newline="\n") as f:
     json.dump(dashboard, f, ensure_ascii=False, indent=2)
 print(f"wrote {out}: {len(panels)} panels")

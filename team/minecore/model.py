@@ -8,6 +8,7 @@ ahead faster than real time to compare ventilation options.
 import heapq
 import math
 import random
+import zlib
 
 from . import layout
 from .fire import Fire
@@ -262,6 +263,7 @@ class Vehicle:
         self.fixed_pos = None
         self.legs = self._build_legs()
         self.leg = 0
+        self.detour = []        # to the battery swap bay and back, ahead of legs[leg]
         self.dist = 0.0
         # spread the fleet around the cycle
         total = sum(leg["length"] for leg in self.legs)
@@ -273,20 +275,22 @@ class Vehicle:
             d -= leg["length"]
         self.state = self._moving_state()
 
+    @staticmethod
+    def _make_leg(a, b, loaded):
+        _, npath, epath = DRIVE.shortest({a: 0.0}, {b})
+        steps = [(eid, npath[k]) for k, eid in enumerate(epath)]
+        length = sum(layout.edge_length(eid) for eid, _ in steps)
+        return dict(frm=a, to=b, steps=steps, length=length, loaded=loaded)
+
     def _build_legs(self):
         nodes = self.route + list(reversed(self.route[:-1]))
-        legs = []
-        for i in range(len(nodes) - 1):
-            a, b = nodes[i], nodes[i + 1]
-            _, npath, epath = DRIVE.shortest({a: 0.0}, {b})
-            steps = [(eid, npath[k]) for k, eid in enumerate(epath)]
-            length = sum(layout.edge_length(eid) for eid, _ in steps)
-            loaded = i < len(self.route) - 1
-            legs.append(dict(frm=a, to=b, steps=steps, length=length, loaded=loaded))
-        return legs
+        return [self._make_leg(nodes[i], nodes[i + 1], i < len(self.route) - 1) for i in range(len(nodes) - 1)]
+
+    def _leg(self):
+        return self.detour[0] if self.detour else self.legs[self.leg]
 
     def _moving_state(self):
-        leg = self.legs[self.leg]
+        leg = self._leg()
         if self.kind == "lhd":
             return "tramming_loaded" if leg["loaded"] else "tramming_empty"
         return "hauling" if leg["loaded"] else "returning"
@@ -295,7 +299,7 @@ class Vehicle:
         """(edge, s) of the vehicle."""
         if self.fixed_pos:
             return self.fixed_pos
-        leg = self.legs[self.leg]
+        leg = self._leg()
         d = self.dist
         for eid, start in leg["steps"]:
             length = layout.edge_length(eid)
@@ -308,7 +312,7 @@ class Vehicle:
         return eid, 1.0 if layout.EDGES[eid]["frm"] == start else 0.0
 
     def speed_kmh(self):
-        leg = self.legs[self.leg]
+        leg = self._leg()
         if self.kind == "lhd":
             return 10.0 if leg["loaded"] else 12.0
         return 12.0 if leg["loaded"] else 16.0
@@ -323,9 +327,11 @@ class Vehicle:
             self.state = "parked"
             return
         if self.state == "charging":
+            # battery swap in the bay of the charging chamber (data sheet: swap option);
+            # the depleted battery stays there on the charger
             self.timer += dt
             self.speed = 0.0
-            if self.timer >= 600.0:      # battery swap (data sheet: swap option)
+            if self.timer >= layout.BATTERY_SWAP_S:
                 self.soc = 95.0
                 self.state = self._moving_state()
             return
@@ -337,7 +343,7 @@ class Vehicle:
         # moving
         v = km_h(self.speed_kmh())
         self.speed = self.speed_kmh()
-        leg = self.legs[self.leg]
+        leg = self._leg()
         step = v * dt
         self.dist += step
         kwh_km = (3.5 if leg["loaded"] else 2.0) if self.kind == "lhd" else (6.0 if leg["loaded"] else 3.0)
@@ -347,8 +353,13 @@ class Vehicle:
             self._arrive(mine)
 
     def _arrive(self, mine):
-        leg = self.legs[self.leg]
         self.timer = 0.0
+        if self.detour:
+            leg = self.detour.pop(0)
+            self.dist = 0.0
+            self.state = "charging" if leg["to"] == layout.SWAP_NODE else self._moving_state()
+            return
+        leg = self.legs[self.leg]
         if leg["loaded"] and leg["to"] == self.route[-1]:
             self.state = "dumping"
         elif not leg["loaded"] and leg["to"] == self.route[0]:
@@ -360,9 +371,9 @@ class Vehicle:
         self.leg = (self.leg + 1) % len(self.legs)
         self.dist = 0.0
         if self.soc < 20.0 and self.legs[self.leg]["loaded"] is False:
-            self.state = "charging"
-            self.timer = 0.0
-            return
+            here = self.legs[self.leg]["frm"]
+            self.detour = [self._make_leg(here, layout.SWAP_NODE, False),
+                           self._make_leg(layout.SWAP_NODE, here, False)]
         self.state = self._moving_state()
 
     def _station(self, mine):
@@ -586,10 +597,14 @@ class MineModel:
             env["fuel_open"] = self.valves[c["fuel_valve"]].open > 0.05
         if c.get("vehicle"):
             v = self.vehicles[c["vehicle"]]
-            if f.t >= 20.0 and not v.fire_alarm:
-                v.fire_alarm = True
-                v.suppression = "discharged"
-                self.log(f"{v.cfg['name']}: бортовая система обнаружения пожара сработала, пожаротушение разряжено")
+            if f.t >= layout.ONBOARD_DETECT_S and not v.fire_alarm and v.suppression != "failed":
+                if f"onboard_fault:{v.id}" in self.faults:
+                    v.suppression = "failed"
+                    self.log(f"{v.cfg['name']}: бортовая система обнаружения и тушения не сработала")
+                else:
+                    v.fire_alarm = True
+                    v.suppression = "discharged"
+                    self.log(f"{v.cfg['name']}: бортовая система обнаружения пожара сработала, пожаротушение разряжено")
             env["onboard"] = v.suppression == "discharged"
         was = f.extinct
         f.step(dt, env)
@@ -697,7 +712,8 @@ class MineModel:
         if sid in self.sensor_faults:
             return dict(state="fault", co=None, vis=None, temp=None, vel=None)
         r = self.reading(cfg["edge"], cfg["s"])
-        noise = self.sensor_noise.setdefault(sid, random.Random(hash(sid) & 0xFFFF))
+        # crc32, not hash(): str hashes are salted per process, runs must repeat exactly
+        noise = self.sensor_noise.setdefault(sid, random.Random(zlib.crc32(sid.encode())))
         co = max(0.0, r["co"] + noise.gauss(0, 0.3))
         temp = r["temp"] + noise.gauss(0, 0.05)
         state = "ok"

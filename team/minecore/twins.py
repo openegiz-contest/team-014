@@ -141,15 +141,19 @@ def definitions():
         add(cid, _attrs(c["name"], "crew", "personnel", headcount=c["people"],
                         self_rescuer_min=layout.SELF_RESCUER_MIN, workplace=_place(c["edge"], c["s"])))
     add("control", _attrs("Пульт сценариев и режимов (тренажёр диспетчера)", "control", "mine",
-                          scenarios={k: {"title": v["title"], "text": v["text"]} for k, v in SCENARIOS.items()},
+                          scenarios={k: {"title": v["title"], "text": v["text"], "faults": v.get("faults", [])}
+                                     for k, v in SCENARIOS.items()},
                           faults=FAULTS),
         {"scenario": {"properties": {"value": "normal", "faults": [], "seq": 0}},
          "speed": {"properties": {"value": 10, "unit": "x"}},
-         "paz_mode": {"properties": {"value": "auto"}}})
+         "paz_mode": {"properties": {"value": "auto"}},
+         "study": {"properties": {"value": "none"}}})
     add("paz", _attrs("Противоаварийная автоматическая защита (ПАЗ) по ПЛА", "paz", "mine"),
         {"mode": {"properties": {"value": "auto"}}, "state": {"properties": {"value": "standby"}}})
     add("advisor", _attrs("Советчик диспетчера: прогноз режимов проветривания", "advisor", "mine"),
-        {"state": {"properties": {"value": "normal"}}})
+        {"state": {"properties": {"value": "normal"}}, "best_option": {"properties": {"value": "none"}},
+         "fire_location": {"properties": {"value": "none"}}, "proposal": {"properties": {"value": "none"}},
+         "study": {"properties": {"value": "idle"}}})
     return d
 
 

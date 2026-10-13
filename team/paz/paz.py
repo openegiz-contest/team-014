@@ -11,6 +11,13 @@ logged as a protection failure, and the fallback is applied.
 Mode `auto`: commands go out on detection (5 s confirmation).
 Mode `manual`: the plan waits for the dispatcher, who either confirms it
 on the panel or reacts after DISPATCHER_DELAY_S of simulated time.
+Mode `off`: protection taken out of service; alarms are logged, nothing
+is commanded (what the mine does with no protection at all).
+
+The advisor may ask for a more specific position (desired property
+`position` of the `paz` twin) when it has located the fire. Over the
+generic position P0 it is taken at once in `auto`; any other change of
+position waits for the dispatcher's confirmation.
 """
 
 import collections
@@ -76,6 +83,10 @@ class Paz:
         self.extra_alarms = set()
         self.confirm_seq = None
         self.done_at = None
+        self.refined_from = None
+        self.proposal_seen = None
+        self.pending = None
+        self.off_logged = False
 
     def log(self, t, text):
         self.events.append([round(t), text])
@@ -101,7 +112,7 @@ class Paz:
 
     def mode(self):
         d = self.mirror.desired("control", "paz_mode")
-        if d and d.get("value") in ("auto", "manual"):
+        if d and d.get("value") in ("auto", "manual", "off"):
             return d["value"]
         return self.mirror.prop("control", "paz_mode", default="auto") or "auto"
 
@@ -111,25 +122,38 @@ class Paz:
         return sensors, vehicles
 
     # -- planning --------------------------------------------------------------------------
-    def plan(self, t, position, manual):
-        due = t + (DISPATCHER_DELAY_S if manual else CONFIRM_S)
+    def plan(self, t, position, manual, due=None):
+        if due is None:
+            due = t + (DISPATCHER_DELAY_S if manual else CONFIRM_S)
         cmds = [dict(name=n, feature=f, value=v, note=note) for n, f, v, note in position["actions"]]
-        if position.get("ventilation") == "reverse":
-            for fid in layout.FANS:
-                cmds.append(dict(name=fid, feature="mode", value="reverse",
-                                 note=f"реверсировать вентиляционную струю ({fid})"))
+        vent = position.get("ventilation", "normal")
+        reversed_now = any(c["feature"] == "mode" and c["value"] == "reverse" for c in self.commands)
+        if vent == "reverse" or reversed_now:
+            for fid, fan in layout.FANS.items():
+                if fan["role"] == "duty":
+                    note = (f"реверсировать вентиляционную струю ({fid})" if vent == "reverse"
+                            else f"вернуть нормальный режим проветривания ({fid})")
+                else:
+                    note = (f"перевести резервный вентилятор на реверс до пуска ({fid})" if vent == "reverse"
+                            else f"вернуть резервный вентилятор в нормальный режим ({fid})")
+                cmds.append(dict(name=fid, feature="mode", value=vent, note=note))
         if position.get("evacuation"):
             cmds.append(dict(name="mine", feature="evacuation", value=position["evacuation"],
                              note="вывести людей из шахты"))
+        have = {(c["name"], c["feature"], c["value"]) for c in self.commands}
+        cmds = [c for c in cmds if (c["name"], c["feature"], c["value"]) not in have]
         for c in cmds:
             c.update(due=due, issued=None, status="pending")
         self.commands.extend(cmds)
+        return cmds
 
     def issue(self, t, c):
         props = {"value": c["value"], "by": "paz", "position": self.position["id"] if self.position else "P7"}
         ditto.publish(self.client, c["name"], ditto.set_desired(c["name"], c["feature"], props))
         c["issued"] = t
         c["status"] = "issued"
+        if c["name"] in layout.FANS:
+            c["was_running"] = self.mirror.prop(c["name"], "state") in ("running", "starting", "reversing")
         self.log(t, f"Команда: {c['note']}")
 
     def verify(self, t, c):
@@ -139,6 +163,11 @@ class Paz:
             return
         rep_feature, rep_value = exp
         actual = self.mirror.prop(c["name"], rep_feature)
+        # a running fan has reversed the air only once it is back at full speed
+        # in the new direction, not when its rotation flips at standstill
+        if c["feature"] == "mode" and c.get("was_running") and actual == rep_value \
+                and self.mirror.prop(c["name"], "state") != "running":
+            actual = self.mirror.prop(c["name"], "state")
         if actual == rep_value:
             c["status"] = "done"
             self.log(t, f"Выполнено: {c['note']} ({round(t - c['issued'])} с)")
@@ -171,8 +200,18 @@ class Paz:
         if time.monotonic() < getattr(self, "quiet_until", 0.0):
             return
         t = self.now()
-        manual = self.mode() == "manual"
+        mode = self.mode()
+        manual = mode == "manual"
         sensors, vehicles = self.alarms()
+
+        if mode == "off":
+            if (sensors or vehicles) and not self.off_logged:
+                self.off_logged = True
+                self.detected_at = t
+                self.trigger = ", ".join(vehicles + sensors)
+                self.log(t, f"Сигнал: {self.trigger}. ПАЗ выведена из работы: команды не выдаются")
+            self.publish(t, manual, mode)
+            return
 
         if self.position is None:
             pos = pla.match(sensors, vehicles)
@@ -190,10 +229,15 @@ class Paz:
                 self.log(t, f"Распространение: аварийный сигнал {s}")
             self.extra_alarms |= set(sensors)
 
+        self.advisor_request(t, manual)
+
         # dispatcher confirmation from the panel
         conf = self.mirror.desired("control", "paz_confirm")
         if conf and conf.get("seq") and conf.get("seq") != self.confirm_seq:
             self.confirm_seq = conf.get("seq")
+            if self.pending:
+                self.log(t, f"Диспетчер подтвердил смену позиции: {self.position['title']} → {self.pending['title']}")
+                self.switch(t, self.pending, manual, due=t)
             pend = [c for c in self.commands if c["status"] == "pending"]
             if pend:
                 self.log(t, "Диспетчер подтвердил ввод позиции ПЛА")
@@ -218,7 +262,44 @@ class Paz:
             faults = sum(1 for c in self.commands if c["status"] == "fault")
             self.log(t, f"Позиция ПЛА отработана за {round(t - (self.detected_at or t))} с" +
                      (f", отказов: {faults}" if faults else ""))
-        self.publish(t, manual)
+        self.publish(t, manual, mode)
+
+    def advisor_request(self, t, manual):
+        """A position asked for by the advisor (desired `position` of the paz twin)."""
+        req = self.mirror.desired("paz", "position") or {}
+        pid = req.get("value")
+        if not pid or req.get("scenario_seq") != self.seq or pid == self.proposal_seen:
+            return
+        if self.position and pid == self.position["id"]:
+            return
+        pos = next((p for p in pla.POSITIONS if p["id"] == pid), None)
+        if pos is None:
+            return
+        self.proposal_seen = pid
+        old = self.position
+        reason = req.get("reason") or "по прогнозу советчика"
+        self.log(t, f"Советчик предлагает {pos['title']}: {reason}")
+        generic = old is None or old["id"] == pla.GENERIC["id"]
+        if generic and not manual:
+            self.log(t, f"Позиция уточнена автоматически: {old['title'] if old else 'нет позиции'} → {pos['title']}")
+            self.switch(t, pos, manual, due=t)
+        elif generic:
+            self.log(t, "Режим «ручной»: уточнение позиции ждёт подтверждения горного диспетчера")
+            self.switch(t, pos, manual, due=t + DISPATCHER_DELAY_S)
+        else:
+            self.pending = pos
+            self.log(t, f"Действует {old['title']}: смена позиции только после подтверждения горного диспетчера")
+
+    def switch(self, t, pos, manual, due):
+        old = self.position
+        self.refined_from = old["id"] if old else None
+        if old is None:
+            self.detected_at = t
+            self.trigger = "советчик"
+        self.position = pos
+        self.pending = None
+        self.done_at = None
+        self.plan(t, pos, manual, due=due)
 
     def fan_watch(self, t):
         tripped = [f for f in layout.FANS if self.mirror.prop(f, "state") == "tripped"]
@@ -249,11 +330,14 @@ class Paz:
                 self.commands.append(dict(name="mine", feature="evacuation", value="all", note="вывести людей из шахты",
                                           due=t, issued=None, status="pending"))
 
-    def publish(self, t, manual):
+    def publish(self, t, manual, mode=None):
         pending = sum(1 for c in self.commands if c["status"] == "pending")
-        if self.position is None and not self.fan_handled:
+        waiting = self.pending is not None
+        if mode == "off":
+            state = "disabled"
+        elif self.position is None and not self.fan_handled:
             state = "standby"
-        elif pending and manual:
+        elif (pending and manual) or waiting:
             state = "awaiting_dispatcher"
         elif any(c["status"] == "fault" for c in self.commands):
             state = "fault"
@@ -262,11 +346,14 @@ class Paz:
         else:
             state = "completed"
         feats = {
-            "mode": {"value": "manual" if manual else "auto"},
+            "mode": {"value": mode or ("manual" if manual else "auto")},
             "state": {"value": state},
             "position": {"value": self.position["id"] if self.position else ("P7" if self.fan_handled else "none"),
                          "title": self.position["title"] if self.position else
-                         (pla.FAN_TRIP["title"] if self.fan_handled else "")},
+                         (pla.FAN_TRIP["title"] if self.fan_handled else ""),
+                         "refined_from": self.refined_from,
+                         "proposed": self.pending["id"] if self.pending else None,
+                         "proposed_title": self.pending["title"] if self.pending else None},
             "trigger": {"value": self.trigger},
             "detected_at": {"value": round(self.detected_at) if self.detected_at is not None else None, "unit": "с"},
             "response_time": {"value": round(self.done_at - self.detected_at) if self.done_at is not None and self.detected_at is not None else None, "unit": "с"},
