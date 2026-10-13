@@ -58,6 +58,7 @@ export function Mnemonic({ horizon, selected, onSelect }: Props) {
   const fire = parseJson<{ airway: string; s: number; hrr_mw: number; extinct: boolean } | null>(prop(things, "control", "fire_truth"), null);
   const fireAw = fire && !fire.extinct ? aws.find((a) => a.edge === fire.airway && onLevel(a)) : undefined;
 
+  const [compact, setCompact] = useState(false);
   const pts: [number, number][] = [...nodes.values()];
   for (const a of links) {
     const p = a.a[2] === h.z ? a.a : a.b;
@@ -67,7 +68,7 @@ export function Mnemonic({ horizon, selected, onSelect }: Props) {
   const xs = pts.map((p) => p[0]);
   const ys = pts.map((p) => p[1]);
   const vb = pts.length
-    ? [Math.min(...xs) - 140, Math.min(...ys) - 140, Math.max(...xs) - Math.min(...xs) + 560, Math.max(...ys) - Math.min(...ys) + 300]
+    ? [Math.min(...xs) - 140, Math.min(...ys) - 140, Math.max(...xs) - Math.min(...xs) + (compact ? 900 : 560), Math.max(...ys) - Math.min(...ys) + 300]
     : [-160, -1560, 1700, 2040];
   const viewBox = vb.join(" ");
   const svgRef = useRef<SVGSVGElement>(null);
@@ -78,6 +79,7 @@ export function Mnemonic({ horizon, selected, onSelect }: Props) {
     const ro = new ResizeObserver(([e]) => {
       const { width, height } = e.contentRect;
       if (width > 0 && height > 0) setUnitsPerPx(1 / Math.min(width / vb[2], height / vb[3]));
+      setCompact(width < 560);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -94,7 +96,7 @@ export function Mnemonic({ horizon, selected, onSelect }: Props) {
   });
 
   return (
-    <svg ref={svgRef} style={{ "--u": unitsPerPx } as CSSProperties} className="mnemonic" viewBox={viewBox} preserveAspectRatio="xMidYMid meet" role="group" aria-label={`Мнемосхема горизонта ${h.label}`}>
+    <svg ref={svgRef} style={{ "--u": unitsPerPx } as CSSProperties} className={`mnemonic${compact ? " is-compact" : ""}`} viewBox={viewBox} preserveAspectRatio="xMidYMid meet" role="group" aria-label={`Мнемосхема горизонта ${h.label}`}>
       <defs>
         <pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="10" stroke={COLORS.alarm} strokeWidth="3" />

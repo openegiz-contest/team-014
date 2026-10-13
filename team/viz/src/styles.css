@@ -105,6 +105,8 @@ button, input { font: inherit; color: inherit; }
 .mn-node { fill: var(--text-2); font: 500 30px var(--sans); font-size: max(30px, calc(15px * var(--u, 1))); }
 .mn-note { fill: var(--text-3); font: 400 26px var(--sans); font-size: max(26px, calc(13px * var(--u, 1))); }
 .mn-flow { fill: var(--text-3); font: 400 24px var(--mono); font-size: max(24px, calc(13px * var(--u, 1))); }
+.mnemonic.is-compact .mn-note, .mnemonic.is-compact .mn-flow { display: none; }
+.mnemonic.is-compact .mn-node { font-size: max(30px, calc(12px * var(--u, 1))); }
 .mn-crew { fill: #0e1116; font: 600 26px var(--mono); }
 .mn-ok { fill: #7fe0bb; font: 600 28px var(--mono); }
 .mn-warn { fill: var(--warn); font: 600 26px var(--mono); font-size: max(26px, calc(14px * var(--u, 1))); }
