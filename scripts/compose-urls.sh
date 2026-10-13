@@ -7,7 +7,10 @@ set -a; . "$ROOT/deploy/compose/.env"; set +a
 H="${OPENEGIZ_PUBLIC_HOST:-localhost}"
 cat <<TXT
 
-OpenEgiz is up.
+OpenEgiz is up, with the Bolashak digital mine.
+
+  Mine dispatcher http://$H:${BOLASHAK_VIZ_PORT:-8095}   (3D mine, ПАЗ, advisor, what-if scenarios)
+  Mine dashboard  http://$H:$GRAFANA_PORT/d/bolashak-mine
 
   Grafana        http://$H:$GRAFANA_PORT        admin / $GRAFANA_ADMIN_PASSWORD
   Ditto API      http://$H:$DITTO_PORT/api/2    ditto / $DITTO_PASSWORD   (devops / $DITTO_DEVOPS_PASSWORD)
@@ -16,5 +19,5 @@ OpenEgiz is up.
   MQTT           tcp://$H:$MQTT_PORT
   Unity WebGL    http://$H:$UNITY_PORT/build/<file>   (files from ./build/)
 
-Credentials live in deploy/compose/.env. Check everything with: make smoke
+Credentials live in deploy/compose/.env. Check everything with: make smoke, make mine-check
 TXT

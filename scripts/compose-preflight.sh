@@ -51,7 +51,8 @@ port_busy() {
 ours="$(docker compose -f "$ROOT/deploy/compose/docker-compose.yml" ps -q 2>/dev/null || true)"
 if [ -z "$ours" ]; then
   busy=()
-  for var in GRAFANA_PORT DITTO_PORT EXTENDED_API_PORT UNITY_PORT INFLUXDB_PORT MQTT_PORT; do
+  BOLASHAK_VIZ_PORT="${BOLASHAK_VIZ_PORT:-8095}"
+  for var in GRAFANA_PORT DITTO_PORT EXTENDED_API_PORT UNITY_PORT INFLUXDB_PORT MQTT_PORT BOLASHAK_VIZ_PORT; do
     port="${!var}"
     if port_busy "$port"; then
       busy+=("$var=$port")

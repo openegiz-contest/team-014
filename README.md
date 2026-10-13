@@ -1,43 +1,60 @@
-# <Team name>: a digital mine on OpenEgiz
+# Цифровая шахта «Болашақ»: противоаварийная защита на OpenEgiz
 
-> Team Repository of the contest “Digital Mine on OpenEgiz”. **Replace the contents of this file with the instructions for your Submission.** The AI Jury runs the Submission strictly by these instructions, from scratch, in the Judge Environment. Accepted languages: English, Kazakh, Russian.
+Цифровой двойник подземной хромовой шахты «Болашақ» Донского ГОКа (Хромтау, Актюбинская область, АО «ТНК «Казхром»). Двойник считает вентиляционную сеть, распространение пожара и дыма, движение техники, руды и людей. Модуль ПАЗ отрабатывает позиции плана ликвидации аварий (ПЛА): закрывает клапаны и двери, снимает напряжение, включает водяные завесы, реверсирует вентилятор, выводит людей. Советчик диспетчера за секунды прогоняет 30 минут аварии вперёд для каждого режима проветривания и проверяет, правильно ли составлен ПЛА.
 
-> **Start with the Concept**, the first section of [SUBMISSION.md](SUBMISSION.md): the Team writes it before any code. What AI agents build from this Template without a Concept is the Default Solution, published on the [contest site](https://openegiz-contest.github.io/) as the low bar: a Submission that does not go beyond it gets low levels in the Rubric. AI agents read [AGENTS.md](AGENTS.md).
+Концепция, состав двойников, модули, сценарии и источники данных описаны в [SUBMISSION.md](SUBMISSION.md), презентация — [presentation.pdf](presentation.pdf).
 
-## Running
+## Запуск
 
-Requirements (Docker, `make`, Windows/WSL2 setup) are in [OPENEGIZ.md](OPENEGIZ.md) / [OPENEGIZ.ru.md](OPENEGIZ.ru.md).
+Требования: Ubuntu 24.04 (или WSL2), Docker с Compose v2, `make`, свободные порты 3000, 8080, 8085, 8086, 8090, 8095, 1883. Подробнее о платформе — в [OPENEGIZ.ru.md](OPENEGIZ.ru.md).
 
 ```bash
-sudo apt install -y make   # if make is missing (clean Ubuntu)
-make up            # the OpenEgiz platform
-make example-mine  # the Example Mine: twins, simulator, dashboard
+sudo apt-get install -y make   # если make не установлен (чистая Ubuntu)
+make up                        # платформа OpenEgiz и вся шахта: двойники, симулятор, ПАЗ, советчик, интерфейс, дашборд
+make mine-check                # проверка решения от начала до конца, включая прогон аварийного сценария (около 1 минуты)
 ```
 
-Replace these commands with the commands of your Submission. The Submission must start by following these instructions without manual intervention (Rules, clause 6.4); downloading datasets and models and building are also listed here.
+`make up` при первом запуске генерирует пароли в `deploy/compose/.env`, собирает образы решения (Python-сервисы и веб-интерфейс), создаёт 100 двойников в Ditto и запускает симулятор. Первый запуск занимает 5–10 минут, GPU и внешние датасеты не нужны. В конце команда печатает адреса и логины.
 
-## What to open
+Остановить: `make down`. Удалить всё вместе с данными: `make clean`.
 
-- Grafana: the address and login are printed by `make up`.
-- <where to see the mine visualization, which dashboards>
+## Что открыть
 
-## Repository contents
-
-| Path | Contents |
+| Адрес | Что там |
 |---|---|
-| `team/` | Directory for the Team's code. Using it is optional: any part may be changed, including the platform core |
-| `SUBMISSION.md` | Description of the Submission: **required** |
-| `presentation.pdf` | Presentation: **required**, in the repository root |
-| `AGENTS.md`, `CLAUDE.md` | Instructions for your AI agents (Codex, Claude Code and others read them automatically) |
-| `examples/mine/` | The Example Mine: shows how a digital mine is built on OpenEgiz. It is not a basis for the Submission |
-| `OPENEGIZ.md`, `OPENEGIZ.ru.md` | Documentation of the OpenEgiz platform v1.0.4 |
+| http://localhost:8095 | Пульт диспетчера шахты: 3D-модель выработок с дымом, людьми и техникой, мнемосхема горизонтов, вкладки «Обстановка», «ПАЗ», «Советчик», «Сценарии», «Журнал». Клик по объекту открывает его карточку и ручное управление |
+| http://localhost:3000/d/bolashak-mine | Дашборд Grafana «Шахта «Болашак»»: люди, выдача руды, CO и видимость на газоаналитических узлах, мощность пожара, ГВУ, пожарный трубопровод. Логин `admin`, пароль печатает `make up` |
+| http://localhost:3000 → приложение OpenEgiz → Twins | Все двойники шахты в namespace `bolashak` с иерархией `_parents` |
 
-The Submission is the `main` branch at the moment of the Freeze; other branches are not evaluated.
+## Как запустить сценарий
 
-## License
+1. Откройте пульт http://localhost:8095, вкладка «Сценарии».
+2. Выберите аварию (пожар ПДМ, самосвала, зарядной камеры, конвейера, склада ГСМ, ЦПП или остановку вентилятора) и при желании отказы защиты: заклинившую дверь, несработавший клапан, отказ датчика, низкое давление воды, неисправный клетевой подъём.
+3. Нажмите «Запустить сценарий». ПАЗ обнаружит пожар по датчикам и выполнит позицию ПЛА, советчик выдаст прогноз и рекомендацию, люди пойдут к убежищам и стволу.
+4. «Сброс в норму» возвращает шахту в штатный режим. На вкладке «ПАЗ» можно переключить автоматику в ручной режим, чтобы сравнить время реакции.
 
-The Submission is distributed under the MIT license, see [LICENSE](LICENSE). Copyright belongs to the Team: add the line `Copyright (c) 2026 <Team members>` to `LICENSE`.
+Сценарии запускаются через двойник `bolashak:control` (desiredProperties признака `scenario`), без изменения кода.
+
+## Состав репозитория
+
+| Путь | Содержимое |
+|---|---|
+| `team/minecore/` | Модель шахты: схема выработок, вентсеть (метод Харди Кросса), пожар и дым, люди, техника, ПЛА; описание двойников |
+| `team/sim/` | Создание двойников в Ditto, симулятор, `make mine-check` |
+| `team/paz/` | Модуль противоаварийной защиты по позициям ПЛА |
+| `team/advisor/` | Советчик диспетчера: прогноз режимов проветривания |
+| `team/viz/` | Пульт диспетчера (React + three.js), раздаётся nginx |
+| `team/grafana/` | Дашборд Grafana и его генератор |
+| `team/compose.yml` | Сервисы решения поверх `deploy/compose/docker-compose.yml`; Makefile подключает его всегда |
+| `DESIGN.md` | Дизайн-токены интерфейса (тёмная палитра ISA-101 для операторских экранов) |
+| `SUBMISSION.md` | Описание решения |
+| `presentation.pdf` | Презентация |
+| `examples/`, `OPENEGIZ.md` | Пример рудника и документация платформы OpenEgiz v1.0.4 из шаблона конкурса |
+
+## Лицензия
+
+MIT, см. [LICENSE](LICENSE). Источники данных и их лицензии — в [DATA_LICENSES.md](DATA_LICENSES.md).
 
 ---
 
-Platform: [aleka07/openegiz](https://github.com/aleka07/openegiz). If the platform was useful to you, support the project with a star on GitHub.
+Платформа: [aleka07/openegiz](https://github.com/aleka07/openegiz).

@@ -1,9 +1,11 @@
-.PHONY: up down ps logs smoke clean example-mine example-mine-stop install uninstall status endpoints upgrade upload-build generate-data copy-build unity-demo check-secrets check-public-host
+.PHONY: up down ps logs smoke mine-check clean example-mine example-mine-stop install uninstall status endpoints upgrade upload-build generate-data copy-build unity-demo check-secrets check-public-host
 
 # ---------------------------------------------------------------------------
 # Docker Compose deployment (laptops, CI, contest judges): deploy/compose/
 # ---------------------------------------------------------------------------
-COMPOSE_BASE := docker compose -f deploy/compose/docker-compose.yml
+# team/compose.yml is the Bolashak mine (twins, simulator, ПАЗ, advisor,
+# visualization, dashboard): `make up` always starts it with the platform.
+COMPOSE_BASE := docker compose -f deploy/compose/docker-compose.yml -f team/compose.yml
 # Once `make example-mine` has run, every compose command also loads the mine
 # overlay, so `down` stops its simulator and `up` keeps its Grafana dashboard.
 # `make clean` forgets it.
@@ -20,8 +22,14 @@ up:
 	@# as up. Wait for it to exit, then check how.
 	@test "$$(docker wait $$($(COMPOSE) ps -a -q init))" = 0 || { \
 	  echo "ERROR: the init job (policy + Ditto connections) failed:"; $(COMPOSE) logs init; exit 1; }
+	@test "$$(docker wait $$($(COMPOSE) ps -a -q bolashak-setup))" = 0 || { \
+	  echo "ERROR: creating the Bolashak twins failed:"; $(COMPOSE) logs bolashak-setup; exit 1; }
 	@bash scripts/compose-wait-ready.sh
 	@bash scripts/compose-urls.sh
+
+## Check the Bolashak mine end to end: twins, simulator, ПАЗ, advisor, telemetry, dashboard, visualization, a what-if run
+mine-check:
+	$(COMPOSE) run --rm --no-deps bolashak-setup python -m sim.check
 
 ## Stop the platform, keep data
 down:

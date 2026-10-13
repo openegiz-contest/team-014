@@ -23,6 +23,11 @@ deploy/compose/.example-mine
 __pycache__/
 *.pyc
 
+# Team viz build output and dependencies
+team/viz/node_modules/
+team/viz/dist/
+team/presentation/node_modules/
+
 # Demo Unity scene, downloaded by `make unity-demo` (88 MB, lives in a release)
 build/WebGL Build.loader.js
 build/WebGL Build.framework.js

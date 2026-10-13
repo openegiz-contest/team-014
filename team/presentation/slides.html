@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Цифровая шахта «Болашак»: безопасность и противоаварийная защита</title>
+<style>
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: url(fonts/ibm-plex-sans-cyrillic-400-normal.woff2) format("woff2"); unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+04D8-04D9, U+04E8-04E9, U+2116; }
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F, U+2190-21FF, U+2212; }
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 600; src: url(fonts/ibm-plex-sans-cyrillic-600-normal.woff2) format("woff2"); unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+04D8-04D9, U+04E8-04E9, U+2116; }
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 600; src: url(fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F, U+2190-21FF, U+2212; }
+  @font-face { font-family: "IBM Plex Mono"; font-weight: 500; src: url(fonts/ibm-plex-mono-cyrillic-500-normal.woff2) format("woff2"); unicode-range: U+0400-045F; }
+  @font-face { font-family: "IBM Plex Mono"; font-weight: 500; src: url(fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F, U+2212; }
+
+  :root {
+    --bg: #0e1116; --panel: #151a21; --panel-2: #1c222b; --line: #2a323d;
+    --text: #e6eaf0; --text-2: #a9b3c1; --text-3: #8592a3;
+    --ok: #3fb68b; --warn: #e5a50a; --alarm: #ef4b4b; --info: #4aa3df; --smoke: #9a6b3c;
+  }
+  @page { size: 1280px 720px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--text); font-family: "IBM Plex Sans", system-ui, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .slide { width: 1280px; height: 720px; position: relative; overflow: hidden; page-break-after: always; break-after: page; padding: 48px 56px 40px; display: flex; flex-direction: column; }
+  .slide:last-child { page-break-after: auto; break-after: auto; }
+  .kicker { font: 500 15px "IBM Plex Mono", monospace; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 10px; }
+  h1 { font-size: 52px; font-weight: 600; line-height: 1.1; letter-spacing: -0.01em; }
+  h2 { font-size: 34px; font-weight: 600; line-height: 1.2; margin-bottom: 20px; }
+  p, li { font-size: 20px; line-height: 1.45; color: var(--text-2); }
+  strong { color: var(--text); font-weight: 600; }
+  ul { list-style: none; display: grid; gap: 14px; align-content: start; }
+  li { padding-left: 22px; position: relative; }
+  li::before { content: ""; position: absolute; left: 0; top: 12px; width: 8px; height: 8px; border-radius: 2px; background: var(--text-3); }
+  .grid { display: grid; gap: 32px; flex: 1; min-height: 0; align-items: start; }
+  .g-40-60 { grid-template-columns: 4fr 6fr; }
+  .g-35-65 { grid-template-columns: 35fr 65fr; }
+  .g-50 { grid-template-columns: 1fr 1fr; }
+  .shot { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); align-self: start; }
+  .shot img { display: block; width: 100%; height: auto; }
+  .cap { font-size: 15px; color: var(--text-3); margin-top: 8px; line-height: 1.4; }
+  .foot { position: absolute; left: 56px; right: 56px; bottom: 20px; display: flex; justify-content: space-between; font: 500 13px "IBM Plex Mono", monospace; color: var(--text-3); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: auto; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+  .stat b { display: block; font: 600 36px "IBM Plex Sans"; color: var(--text); }
+  .stat span { font-size: 16px; color: var(--text-2); }
+  .tree { font: 500 15px/1.55 "IBM Plex Mono", monospace; color: var(--text-2); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; white-space: pre; }
+  .tree em { font-style: normal; color: var(--text-3); }
+  table { border-collapse: collapse; width: 100%; font-size: 18px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 15px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+  td { color: var(--text-2); }
+  td:first-child { color: var(--text); font-weight: 600; }
+  .ok { color: #7fe0bb; } .warn { color: #ffd166; } .bad { color: #ff9b9b; }
+  .tag { display: inline-block; font: 500 14px "IBM Plex Mono", monospace; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--text-2); margin-right: 6px; }
+  .title-wrap { display: grid; grid-template-columns: 5fr 7fr; gap: 40px; flex: 1; align-items: center; }
+  .accent { width: 64px; height: 4px; background: var(--alarm); margin: 24px 0; border-radius: 2px; }
+  code { font: 500 18px "IBM Plex Mono", monospace; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; }
+  .cmd { font: 500 20px/1.7 "IBM Plex Mono", monospace; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px 22px; color: var(--text); }
+  .cmd span { color: var(--text-3); }
+</style>
+</head>
+<body>
+
+<section class="slide">
+  <div class="title-wrap">
+    <div>
+      <div class="kicker">OpenEgiz · Digital Mine · team-014</div>
+      <h1>Цифровая шахта «Болашак»</h1>
+      <div class="accent"></div>
+      <p style="font-size:24px;color:var(--text)">Безопасность и противоаварийная защита подземного рудника</p>
+      <p style="margin-top:16px">Шахта «Болашак», Донской ГОК АО «ТНК «Казхром», Хромтау, Актюбинская область</p>
+      <p style="margin-top:28px"><span class="tag">erasyu</span><span class="tag">copi313</span><span class="tag">aikyn-tech</span></p>
+    </div>
+    <div class="shot"><img src="shots/30-lhd-3d.png" alt="Пульт диспетчера во время пожара ПДМ"></div>
+  </div>
+  <div class="foot"><span>Октябрь 2026</span><span>1</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Задача</div>
+  <h2>Первые минуты подземного пожара решают всё</h2>
+  <div class="grid g-50" style="flex:none">
+    <ul>
+      <li>На «Болашаке» работают <strong>батарейные ПДМ и самосвалы</strong>, есть склад ГСМ, зарядная камера, конвейер и ЦПП. Любой из них может загореться.</li>
+      <li>Дым идёт по вентиляционной струе за минуты. Нужно сразу <strong>перекрыть, обесточить, вывести людей</strong> и решить, нужен ли реверс.</li>
+    </ul>
+    <ul>
+      <li><strong>Горный диспетчер</strong> получает автоматику ПАЗ, которая отрабатывает позицию плана ликвидации аварий, и советчика с прогнозом.</li>
+      <li><strong>Главный инженер и инженер по промбезопасности</strong> проверяют позиции ПЛА и отказы защиты на сценариях what-if.</li>
+      <li>Это <strong>наш регион</strong>: Хромтау, Актюбинская область.</li>
+    </ul>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>100</b><span>двойников в Ditto</span></div>
+    <div class="stat"><b>7</b><span>аварийных сценариев</span></div>
+    <div class="stat"><b>11</b><span>отказов защиты</span></div>
+    <div class="stat"><b>≈ 2 с</b><span>прогноз на 30 минут, 3 варианта</span></div>
+  </div>
+  <div class="foot"><span>Цифровая шахта «Болашак»</span><span>2</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Модель</div>
+  <h2>Иерархия двойников и физика шахты</h2>
+  <div class="grid g-40-60">
+    <div class="tree">bolashak:mine
+├── h-480, h-560, h-640  <em>горизонты</em>
+│   ├── aw-* ×32   <em>выработки, вентсеть</em>
+│   ├── gs-* ×16   <em>газоаналитика</em>
+│   ├── fd-* ×5, esd/dv-* ×4
+│   ├── sub-* ×3   <em>ЦПП, ПУПП</em>
+│   ├── refuge ×2  <em>убежища</em>
+│   └── дробилка, конвейер, склад…
+├── стволы ×3 → подъёмы
+├── gvu → fan-1, fan-2
+├── fire-main  <em>пожарный став</em>
+├── fleet → ПДМ ×3, самосвалы ×3
+├── personnel → бригады ×8
+├── control  <em>what-if</em>
+├── paz      <em>ПАЗ</em>
+└── advisor  <em>советчик</em></div>
+    <ul>
+      <li><strong>Вентиляция:</strong> сеть решается методом Харди Кросса, учтены вентилятор, двери, регуляторы и тепловая депрессия пожара. ГВУ даёт около 349 м³/с.</li>
+      <li><strong>Пожар:</strong> мощность растёт по t². Учтены выход CO и сажи, повторное воспламенение батареи, завесы при давлении от 6 бар, отсечной клапан ГСМ.</li>
+      <li><strong>Дым:</strong> переносится по ячейкам около 40 м со скоростью воздуха; видимость и CO в каждой выработке.</li>
+      <li><strong>Люди:</strong> 29 человек в 8 бригадах. Маршрут ищется Дейкстрой со штрафом за дым, доза CO считается по Purser (FED), клеть поднимает 40 человек за рейс.</li>
+      <li><strong>Производство:</strong> около 280 т/ч, батареи разряжаются, при аварии считаются потери добычи.</li>
+    </ul>
+  </div>
+  <div class="foot"><span>Цифровая шахта «Болашак»</span><span>3</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Визуализация · сценарий «Пожар ПДМ на очистном участке −560»</div>
+  <h2>Пульт диспетчера: 3D и мнемосхема горизонта</h2>
+  <div class="grid g-50">
+    <div>
+      <div class="shot"><img src="shots/31-lhd-3d-560.png" alt="3D-модель шахты, горизонт −560, очаг 15,6 МВт"></div>
+      <p class="cap">3D-модель трёх горизонтов: дым окрашивает выработки, на модели видны очаг, бригады, убежища и техника.</p>
+    </div>
+    <div>
+      <div class="shot"><img src="shots/34-lhd-scheme.png" alt="Мнемосхема горизонта −560 с дымом и CO на датчиках"></div>
+      <p class="cap">Мнемосхема −560: направление и скорость воздуха, CO на датчиках, задымлённые выработки, люди в убежище.</p>
+    </div>
+  </div>
+  <div class="foot"><span>http://localhost:8095</span><span>4</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Модуль 1 · противоаварийная защита</div>
+  <h2>ПАЗ отрабатывает позицию ПЛА по событиям Ditto</h2>
+  <div class="grid g-35-65">
+    <ul>
+      <li>Датчик или бортовая система техники переходит в «аварию». ПАЗ подбирает <strong>позицию плана ликвидации аварий</strong>.</li>
+      <li>Команды уходят исполнительным органам как <code>desiredProperties</code>; ПАЗ ждёт фактического состояния и отмечает <strong>отказы</strong>.</li>
+      <li>Пожар ЦПП −480: обесточить ЦПП, реверс обоих вентиляторов, эвакуация. Позиция отработана <strong>за 130–140 с</strong>.</li>
+      <li>В ручном режиме команды ждут диспетчера или уходят через 5 модельных минут.</li>
+    </ul>
+    <div>
+      <div class="shot"><img src="shots/12-paz.png" alt="Вкладка ПАЗ: позиция 6 отработана"></div>
+    </div>
+  </div>
+  <div class="foot"><span>team/paz · team/minecore/pla.py</span><span>5</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Модуль 2 · советчик диспетчера</div>
+  <h2>Прогноз на 30 минут и проверка плана</h2>
+  <div class="grid g-35-65">
+    <ul>
+      <li>Место пожара ищется <strong>только по двойникам</strong>: по сработавшим датчикам и направлениям воздуха до тревоги.</li>
+      <li>Модель шахты восстанавливается из двойников и прогоняется вперёд для вариантов <strong>«без действий», «норма + ПЛА», «реверс + ПЛА»</strong>.</li>
+      <li>Ранжирование: пострадавшие, люди под угрозой, доза FED, человеко-минуты в дыму.</li>
+      <li>Аудит: совпадает ли решение позиции ПЛА о проветривании с лучшим вариантом.</li>
+    </ul>
+    <div>
+      <div class="shot"><img src="shots/13-advisor.png" alt="Вкладка «Советчик» при пожаре ЦПП"></div>
+    </div>
+  </div>
+  <div class="foot"><span>team/advisor</span><span>6</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">What-if · результаты на модели</div>
+  <h2>Что даёт автоматика и правильный режим проветривания</h2>
+  <table>
+    <thead><tr><th style="width:30%">Сценарий</th><th>С автоматикой ПАЗ</th><th>Без неё</th></tr></thead>
+    <tbody>
+      <tr><td>Пожар ПДМ −560</td><td class="ok">29 из 29 в безопасности, доза FED 0</td><td class="warn">ручной режим: FED 0,23, 36 чел.·мин в дыму; без действий FED 0,60</td></tr>
+      <tr><td>Пожар ЦПП −480</td><td class="ok">реверс по позиции 6: 0 чел.·мин в дыму</td><td class="bad">нормальный режим: 178 чел.·мин в дыму, 24 из 29 за 30 мин</td></tr>
+      <tr><td>Пожар конвейера −640</td><td class="ok">1,8 МВт через 30 мин</td><td class="bad">дренчер и дверь отказали: 7,0 МВт</td></tr>
+      <tr><td>Пожар склада ГСМ −640</td><td class="ok">очаг потушен</td><td class="bad">дверь и отсечной клапан отказали: 4,1 МВт</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:24px">Сценарии запускаются с пульта или через двойник <code>control</code>, отказы защиты комбинируются с любым пожаром, «Сброс в норму» возвращает шахту в исходное состояние.</p>
+  <div class="foot"><span>Цифровая шахта «Болашак»</span><span>7</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Тренды</div>
+  <h2>Дашборд Grafana для инженера по промбезопасности</h2>
+  <div class="grid" style="grid-template-columns: 1fr">
+    <div class="shot" style="width: 848px; justify-self: center"><img src="shots/20-grafana.png" alt="Дашборд Grafana: люди, ПАЗ, CO, видимость, мощность пожара, ГВУ"></div>
+  </div>
+  <div class="foot"><span>http://localhost:3000/d/bolashak-mine</span><span>8</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">Запуск и проверка</div>
+  <h2>Одна команда поднимает платформу и шахту</h2>
+  <div class="grid" style="grid-template-columns: 5fr 4fr 2fr">
+    <div>
+      <div class="cmd"><span>$</span> sudo apt-get install -y make<br><span>$</span> make up<br><span>$</span> make mine-check</div>
+      <ul style="margin-top:24px">
+        <li><code>make mine-check</code> проверяет двойники и иерархию, ход модели, данные в InfluxDB, дашборд, пульт и прокси, затем прогоняет сценарий и сбрасывает шахту в норму.</li>
+        <li>Пульт работает на телефоне: та же модель, вкладки, клавиатура и фокус.</li>
+      </ul>
+    </div>
+    <div>
+      <p style="color:var(--text);font-weight:600;margin-bottom:12px">Ограничения</p>
+      <ul>
+        <li>Три горизонта и основные выработки, а не вся сеть шахты.</li>
+        <li>Вентиляция квазистационарная, без обратного хода дыма против струи.</li>
+        <li>Бригада движется одной группой; метана нет, шахта негазовая.</li>
+        <li>Параметры взяты из открытых источников, ссылки в SUBMISSION.md.</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="shots/16-mobile.png" alt="Пульт диспетчера на телефоне"></div>
+  </div>
+  <div class="foot"><span>github.com/openegiz-contest/team-014</span><span>9</span></div>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,39 @@
+# Serves the dispatcher panel and proxies the Ditto API of the platform.
+# The browser never sees the Ditto credentials: nginx adds them. Only reads
+# and the desired properties of the Bolashak twins (commands) are allowed.
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    location = /healthz { return 200 "ok"; add_header Content-Type text/plain; }
+
+    location / {
+        try_files $uri /index.html;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # commands: PUT desiredProperties of a bolashak twin feature
+    location ~ ^/api/2/things/bolashak:[a-z0-9-]+/features/[a-z_]+/desiredProperties$ {
+        limit_except GET PUT { deny all; }
+        proxy_pass http://ditto-nginx:80;
+        proxy_set_header Authorization "Basic ${DITTO_BASIC_AUTH}";
+        proxy_set_header Host $host;
+    }
+
+    # reads: twins, search and the server-sent event stream
+    location /api/ {
+        limit_except GET { deny all; }
+        proxy_pass http://ditto-nginx:80;
+        proxy_set_header Authorization "Basic ${DITTO_BASIC_AUTH}";
+        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+    }
+}

@@ -1,0 +1,86 @@
+# Bolashak digital mine: an overlay on deploy/compose/docker-compose.yml.
+# The Makefile always loads it, so `make up` starts the platform and the
+# whole solution. Paths are relative to deploy/compose/.
+
+services:
+  bolashak-setup:
+    build: ../../team
+    image: openegiz/bolashak:local
+    restart: "no"
+    command: ["python", "-m", "sim.setup_twins"]
+    environment:
+      DITTO_URL: http://ditto-nginx:80
+      DITTO_PASSWORD: ${DITTO_PASSWORD}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # Same image as bolashak-setup, which builds it (only one service may
+  # build a given image); `pull_policy: never` keeps Compose from looking
+  # for it on Docker Hub.
+  bolashak-sim:
+    image: openegiz/bolashak:local
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 256m
+    command: ["python", "-m", "sim.simulator"]
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      SIM_SPEEDUP: ${SIM_SPEEDUP:-10}
+    depends_on:
+      bolashak-setup:
+        condition: service_completed_successfully
+
+  bolashak-paz:
+    image: openegiz/bolashak:local
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 128m
+    command: ["python", "-m", "paz.paz"]
+    environment:
+      DITTO_URL: http://ditto-nginx:80
+      DITTO_PASSWORD: ${DITTO_PASSWORD}
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+    depends_on:
+      bolashak-setup:
+        condition: service_completed_successfully
+
+  bolashak-advisor:
+    image: openegiz/bolashak:local
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["python", "-m", "advisor.advisor"]
+    environment:
+      DITTO_URL: http://ditto-nginx:80
+      DITTO_PASSWORD: ${DITTO_PASSWORD}
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+    depends_on:
+      bolashak-setup:
+        condition: service_completed_successfully
+
+  bolashak-viz:
+    build: ../../team/viz
+    image: openegiz/bolashak-viz:local
+    restart: unless-stopped
+    mem_limit: 64m
+    ports:
+      - "${OPENEGIZ_BIND:-127.0.0.1}:${BOLASHAK_VIZ_PORT:-8095}:80"
+    environment:
+      DITTO_BASIC_AUTH: ${DITTO_BASIC_AUTH}
+    depends_on:
+      ditto-nginx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  grafana:
+    volumes:
+      - ../../team/grafana/bolashak.json:/var/lib/grafana/example-dashboards/bolashak.json:ro
