@@ -47,8 +47,8 @@ echo "Waiting for Ditto to be ready..."
 i=0
 until ditto_ready; do
     i=$((i + 1))
-    if [ "$i" -ge 90 ]; then
-        echo "Ditto did not become ready within 7.5 minutes" >&2
+    if [ "$i" -ge 168 ]; then
+        echo "Ditto did not become ready within 14 minutes" >&2
         exit 1
     fi
     sleep 5
